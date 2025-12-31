@@ -1,0 +1,106 @@
+# ======================================
+# Xcode
+# ======================================
+
+# Build products
+build/
+DerivedData/
+*.xcuserstate
+*.xccheckout
+*.xcscmblueprint
+
+# User-specific Xcode settings
+xcuserdata/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+
+# Workspace user data
+*.xcworkspace/xcuserdata/
+
+# Swift Playgrounds
+timeline.xctimeline
+playground.xcworkspace
+
+# ======================================
+# Swift Package Manager
+# ======================================
+
+.build/
+Packages/
+Package.resolved
+
+# ======================================
+# App signing & secrets
+# ======================================
+
+*.mobileprovision
+*.p12
+*.cer
+*.key
+
+.env
+.env.*
+Secrets.plist
+
+# ======================================
+# iOS / macOS runtime
+# ======================================
+
+*.ipa
+*.dSYM
+*.dSYM.zip
+*.dSYM.tar.gz
+
+# ======================================
+# CloudKit / Core Data / SwiftData
+# ======================================
+
+CloudKit/
+*.ck
+
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# ======================================
+# Logs & diagnostics
+# ======================================
+
+*.log
+*.trace
+
+# ======================================
+# macOS
+# ======================================
+
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# ======================================
+# Editor / tooling
+# ======================================
+
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ======================================
+# Testing & coverage
+# ======================================
+
+*.profdata
+*.gcda
+*.gcno
+coverage/
+
+# ======================================
+# Archives & exports
+# ======================================
+
+*.xcarchive
