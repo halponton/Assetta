@@ -61,6 +61,40 @@ final class DatabaseManager {
             }
             try db.create(index: "idx_account_workspace_id", on: "account", columns: ["workspace_id"])
         }
+        migrator.registerMigration("v3_transactions") { db in
+            try db.create(table: "transaction") { t in
+                // Primary key: UUID stored as TEXT
+                t.column("id", .text).notNull()
+                t.primaryKey(["id"]) // TEXT PK (UUID)
+
+                // Foreign key to account(id)
+                t.column("account_id", .text).notNull()
+                t.foreignKey(["account_id"], references: "account", columns: ["id"], onDelete: .cascade)
+
+                // Date (YYYY-MM-DD), constrained to ledger epoch
+                t.column("date", .text).notNull()
+                t.check(sql: "date >= '2026-01-01'")
+
+                // Amount in minor units (Int64)
+                t.column("amount_minor", .integer).notNull()
+
+                // Type constrained to allowed semantics
+                t.column("type", .text).notNull()
+                t.check(sql: "type IN ('purchase','income','transfer','card_payment','savings_contribution','savings_withdrawal','investment_contribution','investment_withdrawal','fees_interest')")
+
+                // Optional link to another transaction (e.g., transfer pairing)
+                t.column("linked_transaction_id", .text)
+                t.foreignKey(["linked_transaction_id"], references: "transaction", columns: ["id"])
+
+                // Optional notes
+                t.column("notes", .text)
+
+                // Creation timestamp (ISO-8601 string)
+                t.column("created_at", .text).notNull()
+            }
+            // Index to speed up account/date queries
+            try db.create(index: "transaction_account_date_idx", on: "transaction", columns: ["account_id", "date"])
+        }
         try migrator.migrate(queue)
 
         dbQueue = queue
