@@ -9,10 +9,10 @@ import GRDB
 /// - Savings and investment contributions/withdrawals affect net worth, not budgets.
 ///
 /// This model is storage-only for Milestone 2 (no business logic/UI).
-struct Transaction: Codable, FetchableRecord, PersistableRecord, TableRecord, Sendable {
+struct Transaction: Codable, FetchableRecord, PersistableRecord, TableRecord, Sendable, Hashable {
     static let databaseTableName = "transaction"
 
-    enum TransactionType: String, Codable, CaseIterable, Sendable {
+    enum TransactionType: String, Codable, CaseIterable, Sendable, Hashable {
         case purchase
         case income
         case transfer
