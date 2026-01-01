@@ -7,7 +7,6 @@
 
 import Foundation
 import GRDB
-// TODO: Remove this temporary database inspection helper before pushing a full build (production).
 
 #if DEBUG
 /// Temporary, DEBUG-only helper to inspect the database state without modifying it.
@@ -70,4 +69,5 @@ enum DatabaseDebugInspector {
     }
 }
 #endif
+
 

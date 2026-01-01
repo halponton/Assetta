@@ -41,6 +41,26 @@ final class DatabaseManager {
                 t.column("type", .text).notNull().defaults(to: "personal")
             }
         }
+        migrator.registerMigration("v2_accounts") { db in
+            try db.create(table: "account") { t in
+                // Primary key: UUID stored as TEXT
+                t.column("id", .text).notNull()
+                // Foreign key to workspace(id)
+                t.column("workspace_id", .integer).notNull()
+                // Basic fields
+                t.column("name", .text).notNull().collate(.nocase) // case-insensitive uniqueness via NOCASE
+                t.column("type", .text).notNull()
+                t.column("institution", .text) // nullable
+                t.column("created_at", .text).notNull()
+
+                // Constraints
+                t.primaryKey(["id"]) // TEXT PK (UUID)
+                t.foreignKey(["workspace_id"], references: "workspace", columns: ["id"], onDelete: .cascade)
+                t.check(sql: "type IN ('current','credit','savings','investment')")
+                t.uniqueKey(["workspace_id", "name"]) // data-quality guard: unique account name per workspace
+            }
+            try db.create(index: "idx_account_workspace_id", on: "account", columns: ["workspace_id"])
+        }
         try migrator.migrate(queue)
 
         dbQueue = queue
@@ -61,3 +81,4 @@ final class DatabaseManager {
         return dirURL.appendingPathComponent("Assetta.sqlite")
     }
 }
+
