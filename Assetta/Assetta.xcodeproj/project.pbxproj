@@ -7,8 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		EF5B16512F05E395004F79B0 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = EF5B16502F05E395004F79B0 /* GRDB */; };
-		EF5B16532F05E395004F79B0 /* GRDB-dynamic in Frameworks */ = {isa = PBXBuildFile; productRef = EF5B16522F05E395004F79B0 /* GRDB-dynamic */; };
+		EF3BF2F42F05FC17000C012F /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = EF3BF2F32F05FC17000C012F /* GRDB */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -57,8 +56,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				EF5B16512F05E395004F79B0 /* GRDB in Frameworks */,
-				EF5B16532F05E395004F79B0 /* GRDB-dynamic in Frameworks */,
+				EF3BF2F42F05FC17000C012F /* GRDB in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -119,8 +117,7 @@
 			);
 			name = Assetta;
 			packageProductDependencies = (
-				EF5B16502F05E395004F79B0 /* GRDB */,
-				EF5B16522F05E395004F79B0 /* GRDB-dynamic */,
+				EF3BF2F32F05FC17000C012F /* GRDB */,
 			);
 			productName = Assetta;
 			productReference = EF5B16242F05E17E004F79B0 /* Assetta.app */;
@@ -205,7 +202,7 @@
 			mainGroup = EF5B161B2F05E17E004F79B0;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				EF5B164F2F05E395004F79B0 /* XCRemoteSwiftPackageReference "GRDB" */,
+				EF3BF2F22F05FC17000C012F /* XCRemoteSwiftPackageReference "GRDB.swift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = EF5B16252F05E17E004F79B0 /* Products */;
@@ -631,26 +628,21 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		EF5B164F2F05E395004F79B0 /* XCRemoteSwiftPackageReference "GRDB" */ = {
+		EF3BF2F22F05FC17000C012F /* XCRemoteSwiftPackageReference "GRDB.swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/groue/GRDB.swift";
+			repositoryURL = "https://github.com/groue/GRDB.swift.git";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 7.0.0;
+				minimumVersion = 7.9.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		EF5B16502F05E395004F79B0 /* GRDB */ = {
+		EF3BF2F32F05FC17000C012F /* GRDB */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = EF5B164F2F05E395004F79B0 /* XCRemoteSwiftPackageReference "GRDB" */;
+			package = EF3BF2F22F05FC17000C012F /* XCRemoteSwiftPackageReference "GRDB.swift" */;
 			productName = GRDB;
-		};
-		EF5B16522F05E395004F79B0 /* GRDB-dynamic */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = EF5B164F2F05E395004F79B0 /* XCRemoteSwiftPackageReference "GRDB" */;
-			productName = "GRDB-dynamic";
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
