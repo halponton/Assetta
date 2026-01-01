@@ -20,6 +20,10 @@ struct AssettaApp: App {
                         if DatabaseManager.shared.dbQueue == nil {
                             try DatabaseManager.shared.setUpDatabase()
                             try OnboardingBootstrap().ensureInitialWorkspace()
+#if DEBUG
+                            // TODO: Remove debug database inspection before shipping a full build.
+                            DatabaseDebugInspector.debugPrintDatabaseState()
+#endif
                         }
                     } catch {
                         launchError = String(describing: error)

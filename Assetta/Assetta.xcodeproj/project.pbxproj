@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		EF3BF2F42F05FC17000C012F /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = EF3BF2F32F05FC17000C012F /* GRDB */; };
+		EF3BF3042F060111000C012F /* DatabaseDebugInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF3BF3032F060111000C012F /* DatabaseDebugInspector.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -28,6 +29,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		EF3BF3032F060111000C012F /* DatabaseDebugInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabaseDebugInspector.swift; sourceTree = "<group>"; };
 		EF5B16242F05E17E004F79B0 /* Assetta.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Assetta.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		EF5B16312F05E17F004F79B0 /* AssettaTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AssettaTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		EF5B163B2F05E17F004F79B0 /* AssettaUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AssettaUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -84,6 +86,7 @@
 				EF5B16342F05E17F004F79B0 /* AssettaTests */,
 				EF5B163E2F05E17F004F79B0 /* AssettaUITests */,
 				EF5B16252F05E17E004F79B0 /* Products */,
+				EF3BF3032F060111000C012F /* DatabaseDebugInspector.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -245,6 +248,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				EF3BF3042F060111000C012F /* DatabaseDebugInspector.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
