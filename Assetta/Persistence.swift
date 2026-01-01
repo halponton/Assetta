@@ -4,6 +4,7 @@ import GRDB
 enum PersistenceError: Error {
     case databaseUnavailable
     case transactionIsLinked
+    case categoryInUse
 }
 
 struct Persistence {
@@ -38,6 +39,46 @@ struct Persistence {
         }
     }
 
+    // MARK: Categories
+    static func listCategories() throws -> [Category] {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        let workspaceId = try currentWorkspaceId()
+        return try dbQueue.read { db in
+            try Category.fetchAll(db, sql: "SELECT * FROM category WHERE workspace_id = ? ORDER BY sort_order ASC, name COLLATE NOCASE ASC", arguments: [workspaceId])
+        }
+    }
+
+    static func createCategory(name: String, isDiscretionary: Bool) throws {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        let workspaceId = try currentWorkspaceId()
+        try dbQueue.write { db in
+            // Determine next sort_order within workspace
+            let nextOrder = (try Int.fetchOne(db, sql: "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM category WHERE workspace_id = ?", arguments: [workspaceId])) ?? 0
+            let cat = Category(workspaceId: workspaceId, name: name, isSystem: false, isDiscretionary: isDiscretionary, sortOrder: nextOrder)
+            try cat.insert(db)
+        }
+    }
+
+    static func deleteCategory(id: String) throws {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        try dbQueue.write { db in
+            // Prevent deleting categories that are referenced by transactions
+            let referencingCount = try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM \"transaction\" WHERE category_id = ?",
+                arguments: [id]
+            ) ?? 0
+            if referencingCount > 0 {
+                throw PersistenceError.categoryInUse
+            }
+
+            try db.execute(
+                sql: "DELETE FROM category WHERE id = ?",
+                arguments: [id]
+            )
+        }
+    }
+
     // MARK: Transactions
     static func listTransactions(accountId: String) throws -> [Transaction] {
         guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
@@ -64,7 +105,7 @@ struct Persistence {
         }
     }
 
-    static func updateTransaction(id: String, date: Date, amountMajor: Decimal, type: Transaction.TransactionType, notes: String?) throws {
+    static func updateTransaction(id: String, date: Date, amountMajor: Decimal, type: Transaction.TransactionType, notes: String?, categoryId: String?) throws {
         guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .iso8601)
@@ -76,10 +117,13 @@ struct Persistence {
         let amountMinor = (amountMajor * 100).rounded(0)
         let minorInt = NSDecimalNumber(decimal: amountMinor).int64Value
 
+        // Enforce category applicability: only for purchase and fees_interest
+        let effectiveCategoryId: String? = (type == .purchase || type == .fees_interest) ? categoryId : nil
+
         try dbQueue.write { db in
             try db.execute(
-                sql: "UPDATE \"transaction\" SET date = ?, amount_minor = ?, type = ?, notes = ? WHERE id = ?",
-                arguments: [dateString, minorInt, type.rawValue, notes, id]
+                sql: "UPDATE \"transaction\" SET date = ?, amount_minor = ?, type = ?, category_id = ?, notes = ? WHERE id = ?",
+                arguments: [dateString, minorInt, type.rawValue, effectiveCategoryId, notes, id]
             )
         }
     }

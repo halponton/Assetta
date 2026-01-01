@@ -8,18 +8,23 @@ final class TransactionTests: XCTestCase {
 
     // MARK: - Helpers
 
+    // Tests mirror production FK enforcement by using the same GRDB configuration
+    // that enables PRAGMA foreign_keys = ON for every connection.
     private func makeInMemoryQueue() throws -> DatabaseQueue {
-        let queue = try DatabaseQueue(path: ":memory:")
-        // Enable foreign keys
-        try queue.write { db in
-            try db.execute(sql: "PRAGMA foreign_keys = ON")
-        }
+        let config = DatabaseManager.makeConfiguration()
+        let queue = try DatabaseQueue(path: ":memory:", configuration: config)
         return queue
     }
 
     private func createMinimalSchema(_ db: Database) throws {
         // Minimal account table to satisfy foreign key constraints
         try db.create(table: "account") { t in
+            t.column("id", .text).notNull()
+            t.primaryKey(["id"]) // TEXT PK (UUID)
+        }
+
+        // Minimal category table to satisfy foreign key constraints
+        try db.create(table: "category") { t in
             t.column("id", .text).notNull()
             t.primaryKey(["id"]) // TEXT PK (UUID)
         }
@@ -48,6 +53,10 @@ final class TransactionTests: XCTestCase {
             // Optional link to another transaction (e.g., transfer pairing)
             t.column("linked_transaction_id", .text)
             t.foreignKey(["linked_transaction_id"], references: "transaction", columns: ["id"])
+
+            // Optional category reference
+            t.column("category_id", .text)
+            t.foreignKey(["category_id"], references: "category", columns: ["id"]) // no cascade delete
 
             // Optional notes
             t.column("notes", .text)
@@ -192,3 +201,4 @@ final class TransactionTests: XCTestCase {
 }
 
 #endif
+

@@ -41,6 +41,9 @@ struct Transaction: Codable, FetchableRecord, PersistableRecord, TableRecord, Se
     /// Transaction type
     var type: TransactionType
 
+    /// Optional category reference
+    var categoryId: String?
+
     /// Optional link to a counterpart transaction
     var linkedTransactionId: String?
 
@@ -59,6 +62,7 @@ struct Transaction: Codable, FetchableRecord, PersistableRecord, TableRecord, Se
         case amount_minor
         case type
         case linked_transaction_id
+        case category_id
         case notes
         case created_at
     }
@@ -69,6 +73,7 @@ struct Transaction: Codable, FetchableRecord, PersistableRecord, TableRecord, Se
         case date
         case amountMinor = "amount_minor"
         case type
+        case categoryId = "category_id"
         case linkedTransactionId = "linked_transaction_id"
         case notes
         case createdAt = "created_at"
@@ -82,6 +87,7 @@ struct Transaction: Codable, FetchableRecord, PersistableRecord, TableRecord, Se
         date: String,
         amountMinor: Int64,
         type: TransactionType,
+        categoryId: String? = nil,
         linkedTransactionId: String? = nil,
         notes: String? = nil,
         createdAt: String = ISO8601DateFormatter().string(from: Date())
@@ -91,6 +97,7 @@ struct Transaction: Codable, FetchableRecord, PersistableRecord, TableRecord, Se
         self.date = date
         self.amountMinor = amountMinor
         self.type = type
+        self.categoryId = categoryId
         self.linkedTransactionId = linkedTransactionId
         self.notes = notes
         self.createdAt = createdAt

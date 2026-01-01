@@ -6,6 +6,8 @@ struct TransactionsView: View {
     @State private var transactions: [Transaction] = []
     @State private var showingAdd = false
     @State private var errorMessage: String?
+    @State private var categoryNamesById: [String: String] = [:]
+    @State private var categories: [Category] = []
 
     @State private var selectedTransaction: Transaction?
     @State private var showingEdit = false
@@ -40,6 +42,10 @@ struct TransactionsView: View {
                         .font(.subheadline)
                         HStack(spacing: 6) {
                             Text(tx.type.rawValue)
+                            if let catId = tx.categoryId, let catName = categoryNamesById[catId] {
+                                Text("·")
+                                Text(catName)
+                            }
                             if let notes = tx.notes, !notes.isEmpty {
                                 Text("·")
                                 Text(notes)
@@ -88,18 +94,18 @@ struct TransactionsView: View {
         }
         .sheet(isPresented: $showingAdd) {
             AddTransactionView(account: account) { didCreate in
-                if didCreate { reload() }
+                if didCreate { DispatchQueue.main.async { reload() } }
             }
             .frame(minWidth: 420)
         }
         .sheet(isPresented: $showingEdit, onDismiss: { selectedTransaction = nil }) {
             if let tx = selectedTransaction, let initial = editInitialState(for: tx) {
-                EditTransactionView(initial: initial) { result in
+                EditTransactionView(initial: initial, categories: categories) { result in
                     switch result {
                     case .cancel:
                         break
                     case .saved:
-                        reload()
+                        DispatchQueue.main.async { reload() }
                     }
                 }
                 .frame(minWidth: 420)
@@ -108,6 +114,9 @@ struct TransactionsView: View {
             }
         }
         .task { reload() }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("CategoriesDidChange"))) { _ in
+            reload()
+        }
         .confirmationDialog(
             "Delete Transaction?",
             isPresented: $showingDeleteConfirm,
@@ -125,7 +134,14 @@ struct TransactionsView: View {
     }
 
     private func reload() {
-        do { transactions = try Persistence.listTransactions(accountId: account.id) } catch { errorMessage = String(describing: error) }
+        do {
+            transactions = try Persistence.listTransactions(accountId: account.id)
+            let cats = try Persistence.listCategories()
+            categories = cats
+            categoryNamesById = Dictionary(uniqueKeysWithValues: cats.map { ($0.id, $0.name) })
+        } catch {
+            errorMessage = String(describing: error)
+        }
     }
 
     private func formatAmountMinor(_ minor: Int64) -> String {
@@ -155,6 +171,7 @@ struct TransactionsView: View {
             date: date,
             amountMajor: major,
             type: tx.type,
+            categoryId: tx.categoryId,
             notes: tx.notes
         )
     }
@@ -189,6 +206,7 @@ struct EditTransactionInitialState {
     var date: Date
     var amountMajor: Decimal
     var type: Transaction.TransactionType
+    var categoryId: String?
     var notes: String?
 }
 
@@ -197,6 +215,7 @@ enum EditTransactionResult { case cancel, saved }
 private struct EditTransactionView: View {
     @Environment(\.dismiss) private var dismiss
     let initial: EditTransactionInitialState
+    let categories: [Category]
     var onComplete: (EditTransactionResult) -> Void
 
     @State private var date: Date
@@ -205,12 +224,16 @@ private struct EditTransactionView: View {
     @State private var notes: String
     @State private var errorMessage: String?
 
-    init(initial: EditTransactionInitialState, onComplete: @escaping (EditTransactionResult) -> Void) {
+    @State private var selectedCategoryId: String?
+
+    init(initial: EditTransactionInitialState, categories: [Category], onComplete: @escaping (EditTransactionResult) -> Void) {
         self.initial = initial
+        self.categories = categories
         self.onComplete = onComplete
         _date = State(initialValue: initial.date)
         _type = State(initialValue: initial.type)
         _notes = State(initialValue: initial.notes ?? "")
+        _selectedCategoryId = State(initialValue: initial.categoryId)
         // Format initial amount
         let formatter = NumberFormatter()
         formatter.minimumFractionDigits = 0
@@ -231,6 +254,17 @@ private struct EditTransactionView: View {
                 Picker("Type", selection: $type) {
                     ForEach(Transaction.TransactionType.allCases, id: \.self) { t in
                         Text(t.rawValue).tag(t)
+                    }
+                }
+                if type == .purchase || type == .fees_interest {
+                    Picker("Category", selection: Binding(
+                        get: { selectedCategoryId ?? "" },
+                        set: { selectedCategoryId = $0.isEmpty ? nil : $0 }
+                    )) {
+                        Text("No Category").tag("")
+                        ForEach(categories, id: \.id) { cat in
+                            Text(cat.name).tag(cat.id)
+                        }
                     }
                 }
                 TextEditor(text: $notes)
@@ -270,7 +304,7 @@ private struct EditTransactionView: View {
     private func save() {
         guard let amount = parseAmountMajor() else { return }
         do {
-            try Persistence.updateTransaction(id: initial.id, date: date, amountMajor: amount, type: type, notes: notes.isEmpty ? nil : notes)
+            try Persistence.updateTransaction(id: initial.id, date: date, amountMajor: amount, type: type, notes: notes.isEmpty ? nil : notes, categoryId: selectedCategoryId)
             dismiss(); onComplete(.saved)
         } catch {
             errorMessage = String(describing: error)
