@@ -293,6 +293,30 @@ final class DatabaseManager {
             }
             try db.create(index: "idx_obligation_plan_month", on: "obligation_plan", columns: ["budget_month_id"]) // join aid
         }
+        migrator.registerMigration("v9_recovery_schedule") { db in
+            try db.create(table: "recovery_schedule") { t in
+                t.column("id", .text).notNull()
+                t.primaryKey(["id"]) // TEXT PK (UUID)
+
+                t.column("workspace_id", .integer).notNull()
+                t.foreignKey(["workspace_id"], references: "workspace", columns: ["id"], onDelete: .cascade)
+
+                t.column("source_type", .text).notNull()
+                t.check(sql: "source_type IN ('overspend','savings_withdrawal')")
+
+                t.column("source_id", .text).notNull()
+
+                t.column("start_month", .text).notNull()
+
+                t.column("duration_months", .integer).notNull()
+                t.check(sql: "duration_months BETWEEN 1 AND 3")
+
+                t.column("monthly_adjustment_minor", .integer).notNull()
+
+                t.column("created_at", .text).notNull()
+            }
+            try db.create(index: "idx_recovery_schedule_workspace_start", on: "recovery_schedule", columns: ["workspace_id", "start_month"])
+        }
         try migrator.migrate(queue)
 
         dbQueue = queue

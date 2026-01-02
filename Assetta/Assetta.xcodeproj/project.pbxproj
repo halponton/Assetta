@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		EF31E5432F0876FF001B5FD2 /* RecoverySchedule.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF31E5422F0876FF001B5FD2 /* RecoverySchedule.swift */; };
+		EF31E5452F08772B001B5FD2 /* RecoverySchedulesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF31E5442F08772B001B5FD2 /* RecoverySchedulesView.swift */; };
+		EF31E5472F088105001B5FD2 /* Binding+Optional.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF31E5462F088105001B5FD2 /* Binding+Optional.swift */; };
 		EF3BF2F42F05FC17000C012F /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = EF3BF2F32F05FC17000C012F /* GRDB */; };
 		EF3BF3042F060111000C012F /* DatabaseDebugInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF3BF3032F060111000C012F /* DatabaseDebugInspector.swift */; };
 		EF3BF3062F06D336000C012F /* Transaction.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF3BF3052F06D336000C012F /* Transaction.swift */; };
@@ -42,6 +45,9 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		EF31E5422F0876FF001B5FD2 /* RecoverySchedule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoverySchedule.swift; sourceTree = "<group>"; };
+		EF31E5442F08772B001B5FD2 /* RecoverySchedulesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoverySchedulesView.swift; sourceTree = "<group>"; };
+		EF31E5462F088105001B5FD2 /* Binding+Optional.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Binding+Optional.swift"; sourceTree = "<group>"; };
 		EF3BF3032F060111000C012F /* DatabaseDebugInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabaseDebugInspector.swift; sourceTree = "<group>"; };
 		EF3BF3052F06D336000C012F /* Transaction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transaction.swift; sourceTree = "<group>"; };
 		EF3BF3072F06D3EA000C012F /* TransactionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionTests.swift; sourceTree = "<group>"; };
@@ -126,6 +132,9 @@
 				EF3BF3192F074B06000C012F /* BudgetModels.swift */,
 				EF3BF31B2F074B22000C012F /* BudgetPlannerView.swift */,
 				EF3BF31D2F074E36000C012F /* ObligationModels.swift */,
+				EF31E5422F0876FF001B5FD2 /* RecoverySchedule.swift */,
+				EF31E5442F08772B001B5FD2 /* RecoverySchedulesView.swift */,
+				EF31E5462F088105001B5FD2 /* Binding+Optional.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -287,12 +296,15 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				EF31E5432F0876FF001B5FD2 /* RecoverySchedule.swift in Sources */,
+				EF31E5452F08772B001B5FD2 /* RecoverySchedulesView.swift in Sources */,
 				EF3BF3062F06D336000C012F /* Transaction.swift in Sources */,
 				EF3BF30A2F06D589000C012F /* Account.swift in Sources */,
 				EF3BF31C2F074B22000C012F /* BudgetPlannerView.swift in Sources */,
 				EF3BF30C2F06D590000C012F /* Persistence.swift in Sources */,
 				EF3BF31E2F074E36000C012F /* ObligationModels.swift in Sources */,
 				EF3BF3102F06D59E000C012F /* TransactionsView.swift in Sources */,
+				EF31E5472F088105001B5FD2 /* Binding+Optional.swift in Sources */,
 				EF3BF30E2F06D596000C012F /* AccountsView.swift in Sources */,
 				EF3BF3042F060111000C012F /* DatabaseDebugInspector.swift in Sources */,
 				EF3BF3122F06E27C000C012F /* Category.swift in Sources */,

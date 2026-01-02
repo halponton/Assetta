@@ -31,6 +31,8 @@ struct BudgetPlannerView: View {
 
     @State private var errorMessage: String = ""
 
+    @State private var showingRecoverySchedules = false
+
     var body: some View {
         NavigationStack {
             plannerContent
@@ -38,9 +40,11 @@ struct BudgetPlannerView: View {
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
                     ToolbarItem(placement: .confirmationAction) { Button("Save All") { saveAll() } }
+                    ToolbarItem(placement: .automatic) { Button("Recovery Schedules") { showingRecoverySchedules = true } }
                 }
                 .onAppear { initSelection(); load() }
         }
+        .sheet(isPresented: $showingRecoverySchedules) { RecoverySchedulesView() }
     }
 
     @ViewBuilder

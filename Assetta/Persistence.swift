@@ -5,6 +5,8 @@ enum PersistenceError: Error {
     case databaseUnavailable
     case transactionIsLinked
     case categoryInUse
+    case partialPairOperationNotAllowed
+    case invalidRecoverySchedule
 }
 
 struct Persistence {
@@ -79,6 +81,157 @@ struct Persistence {
                 JOIN account a ON a.id = t.account_id
                 WHERE a.workspace_id = ? AND a.type = 'savings'
             """, arguments: [workspaceId]) ?? 0
+        }
+    }
+
+    /// Creates a paired savings contribution transaction pair atomically.
+    /// - fromCurrentAccountId: the source (current account) with a transfer type and negative amount
+    /// - toSavingsAccountId: the destination savings account with a savings_contribution type and positive amount
+    /// - notes are applied to both transactions.
+    static func createSavingsContributionPair(date: Date, amountMajor: Decimal, fromCurrentAccountId: String, toSavingsAccountId: String, notes: String?) throws {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .iso8601)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        let dateString = formatter.string(from: date)
+
+        let amountMinorDecimal = (amountMajor * 100).rounded(0)
+        let amountMinor = NSDecimalNumber(decimal: amountMinorDecimal).int64Value
+
+        try dbQueue.write { db in
+            var transferTx = Transaction(accountId: fromCurrentAccountId, date: dateString, amountMinor: -amountMinor, type: .transfer, categoryId: nil, notes: notes)
+            var contributionTx = Transaction(accountId: toSavingsAccountId, date: dateString, amountMinor: amountMinor, type: .savings_contribution, categoryId: nil, notes: notes)
+
+            try transferTx.insert(db)
+            try contributionTx.insert(db)
+
+            transferTx.linkedTransactionId = contributionTx.id
+            contributionTx.linkedTransactionId = transferTx.id
+
+            try transferTx.update(db)
+            try contributionTx.update(db)
+        }
+    }
+
+    /// Creates a paired savings withdrawal transaction pair atomically.
+    /// - fromSavingsAccountId: source savings account, type savings_withdrawal, negative amount
+    /// - toCurrentAccountId: destination current account, type transfer, positive amount
+    /// - notes applied to both transactions.
+    static func createSavingsWithdrawalPair(date: Date, amountMajor: Decimal, fromSavingsAccountId: String, toCurrentAccountId: String, notes: String?) throws {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .iso8601)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        let dateString = formatter.string(from: date)
+
+        let amountMinorDecimal = (amountMajor * 100).rounded(0)
+        let amountMinor = NSDecimalNumber(decimal: amountMinorDecimal).int64Value
+
+        try dbQueue.write { db in
+            var withdrawalTx = Transaction(accountId: fromSavingsAccountId, date: dateString, amountMinor: -amountMinor, type: .savings_withdrawal, categoryId: nil, notes: notes)
+            var transferTx = Transaction(accountId: toCurrentAccountId, date: dateString, amountMinor: amountMinor, type: .transfer, categoryId: nil, notes: notes)
+
+            try withdrawalTx.insert(db)
+            try transferTx.insert(db)
+
+            withdrawalTx.linkedTransactionId = transferTx.id
+            transferTx.linkedTransactionId = withdrawalTx.id
+
+            try withdrawalTx.update(db)
+            try transferTx.update(db)
+        }
+    }
+
+    /// Creates a paired savings movement (contribution or withdrawal) by delegating to the specific pair creators.
+    static func createPairedSavingsMovement(savingsAccountId: String, currentAccountId: String, date: Date, amountMajor: Decimal, isContribution: Bool) throws {
+        if isContribution {
+            try createSavingsContributionPair(date: date, amountMajor: amountMajor, fromCurrentAccountId: currentAccountId, toSavingsAccountId: savingsAccountId, notes: nil)
+        } else {
+            try createSavingsWithdrawalPair(date: date, amountMajor: amountMajor, fromSavingsAccountId: savingsAccountId, toCurrentAccountId: currentAccountId, notes: nil)
+        }
+    }
+
+    /// Updates a paired savings movement given one transaction ID.
+    /// Throws if the transaction is not part of a linked pair.
+    /// Updates date, amount, and notes for both transactions atomically.
+    static func updatePairedSavingsMovement(pairMemberId: String, date: Date, amountMajor: Decimal, notes: String?) throws {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .iso8601)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        let dateString = formatter.string(from: date)
+
+        let amountMinorDecimal = (amountMajor * 100).rounded(0)
+        let amountMinor = NSDecimalNumber(decimal: amountMinorDecimal).int64Value
+
+        try dbQueue.write { db in
+            guard var tx = try Transaction.fetchOne(db, key: pairMemberId) else {
+                throw PersistenceError.databaseUnavailable
+            }
+            guard let linkedId = tx.linkedTransactionId else {
+                throw PersistenceError.partialPairOperationNotAllowed
+            }
+            guard var linkedTx = try Transaction.fetchOne(db, key: linkedId) else {
+                throw PersistenceError.partialPairOperationNotAllowed
+            }
+
+            // Determine pair type by types present
+            // Valid pairs:
+            // 1) transfer (negative) + savings_contribution (positive)
+            // 2) savings_withdrawal (negative) + transfer (positive)
+
+            let types = Set([tx.type, linkedTx.type])
+            if types == Set([.transfer, .savings_contribution]) {
+                // Find which is which
+                if tx.type == .transfer {
+                    tx.amountMinor = -amountMinor
+                    linkedTx.amountMinor = amountMinor
+                } else {
+                    tx.amountMinor = amountMinor
+                    linkedTx.amountMinor = -amountMinor
+                }
+            } else if types == Set([.savings_withdrawal, .transfer]) {
+                if tx.type == .savings_withdrawal {
+                    tx.amountMinor = -amountMinor
+                    linkedTx.amountMinor = amountMinor
+                } else {
+                    tx.amountMinor = amountMinor
+                    linkedTx.amountMinor = -amountMinor
+                }
+            } else {
+                throw PersistenceError.partialPairOperationNotAllowed
+            }
+
+            tx.date = dateString
+            linkedTx.date = dateString
+            tx.notes = notes
+            linkedTx.notes = notes
+
+            try tx.update(db)
+            try linkedTx.update(db)
+        }
+    }
+
+    /// Deletes a paired savings movement given one transaction ID.
+    /// Throws if the transaction is not part of a linked pair.
+    static func deletePairedSavingsMovement(pairMemberId: String) throws {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+
+        try dbQueue.write { db in
+            guard let tx = try Transaction.fetchOne(db, key: pairMemberId) else {
+                throw PersistenceError.databaseUnavailable
+            }
+            guard let linkedId = tx.linkedTransactionId else {
+                throw PersistenceError.partialPairOperationNotAllowed
+            }
+
+            try db.execute(
+                sql: "DELETE FROM \"transaction\" WHERE id IN (?, ?)",
+                arguments: [pairMemberId, linkedId]
+            )
         }
     }
 
@@ -198,6 +351,12 @@ struct Persistence {
     static func deleteTransaction(id: String) throws {
         guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
         try dbQueue.write { db in
+            // Pre-check if the transaction itself has a linked_transaction_id
+            let linkedTxId: String? = try String.fetchOne(db, sql: "SELECT linked_transaction_id FROM \"transaction\" WHERE id = ?", arguments: [id])
+            if linkedTxId != nil {
+                throw PersistenceError.transactionIsLinked
+            }
+
             // Pre-check if any other transaction references this one via linked_transaction_id
             let referencingCount = try Int.fetchOne(
                 db,
@@ -383,34 +542,66 @@ struct Persistence {
         return (plan.plannedAmountMinor, totalBudgeted, unallocated)
     }
 
-    /// Computes the planned (budgeted) amount for a specific category in a given month (YYYY-MM).
-    /// The category may be discretionary (budget_category_plan) or non-discretionary (obligation_plan).
-    /// Returns 0 when no plan exists.
-    static func computePlannedAmount(forMonth month: String, categoryId: String) throws -> Int64 {
+    /// Computes the total budgeted amount across all categories (discretionary + obligations) for the given month (YYYY-MM).
+    static func computeTotalBudgetedAllCategories(forMonth month: String) throws -> Int64 {
         guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
         let bm = try fetchOrCreateBudgetMonth(forMonth: month)
         return try dbQueue.read { db in
-            let discretionary: Int64 = try Int64.fetchOne(
-                db,
-                sql: "SELECT COALESCE(amount_minor, 0) FROM budget_category_plan WHERE budget_month_id = ? AND category_id = ?",
-                arguments: [bm.id, categoryId]
-            ) ?? 0
-            let obligation: Int64 = try Int64.fetchOne(
-                db,
-                sql: "SELECT COALESCE(amount_minor, 0) FROM obligation_plan WHERE budget_month_id = ? AND category_id = ?",
-                arguments: [bm.id, categoryId]
-            ) ?? 0
-            return discretionary + obligation
+            let discretionary: Int64 = try Int64.fetchOne(db, sql: "SELECT COALESCE(SUM(amount_minor), 0) FROM budget_category_plan WHERE budget_month_id = ?", arguments: [bm.id]) ?? 0
+            let obligations: Int64 = try Int64.fetchOne(db, sql: "SELECT COALESCE(SUM(amount_minor), 0) FROM obligation_plan WHERE budget_month_id = ?", arguments: [bm.id]) ?? 0
+            return discretionary + obligations
         }
     }
 
-    /// Computes overspend for a specific category in a given month.
-    /// Returns a tuple of (budgeted, actual, overspend) where overspend = actual - budgeted.
-    static func computeCategoryOverspend(forMonth month: String, categoryId: String) throws -> (budgeted: Int64, actual: Int64, overspend: Int64) {
-        let budgeted = try computePlannedAmount(forMonth: month, categoryId: categoryId)
-        let actual = try computeActualSpend(forMonth: month, categoryId: categoryId)
-        let overspend = actual - budgeted
-        return (budgeted, actual, overspend)
+    /// Computes the sum of recovery adjustments that apply to the given month (YYYY-MM).
+    /// A recovery schedule applies for months in the range [start_month, start_month + durationMonths), comparing strings lexicographically as YYYY-MM.
+    static func computeRecoveryAdjustments(forMonth month: String) throws -> Int64 {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        let workspaceId = try currentWorkspaceId()
+        return try dbQueue.read { db in
+            // Fetch schedules that start on or before the target month for this workspace
+            let schedules: [RecoverySchedule] = try RecoverySchedule.fetchAll(
+                db,
+                sql: "SELECT * FROM recovery_schedule WHERE workspace_id = ? AND start_month <= ?",
+                arguments: [workspaceId, month]
+            )
+            var total: Int64 = 0
+            for s in schedules {
+                // Compute end month exclusive using the helper
+                if let endExclusive = try addMonths(toMonth: s.startMonth, monthsToAdd: s.durationMonths) {
+                    if s.startMonth <= month && month < endExclusive {
+                        total += s.monthlyAdjustmentMinor
+                    }
+                }
+            }
+            return total
+        }
+    }
+
+    /// Computes totals for planned income, planned obligations (non-discretionary), discretionary budgeted, discretionary capacity, and unallocated discretionary.
+    static func computeBudgetAndObligationSummary(forMonth month: String) throws -> (plannedIncome: Int64, plannedObligations: Int64, discretionaryBudgeted: Int64, discretionaryCapacity: Int64, unallocatedDiscretionary: Int64) {
+        let plan = try fetchOrCreateIncomePlan(forMonth: month)
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        let bm = try fetchOrCreateBudgetMonth(forMonth: month)
+        let discretionaryBudgeted: Int64 = try dbQueue.read { db in
+            try Int64.fetchOne(db, sql: "SELECT COALESCE(SUM(amount_minor), 0) FROM budget_category_plan WHERE budget_month_id = ?", arguments: [bm.id]) ?? 0
+        }
+        let plannedObligations: Int64 = try dbQueue.read { db in
+            try Int64.fetchOne(db, sql: "SELECT COALESCE(SUM(amount_minor), 0) FROM obligation_plan WHERE budget_month_id = ?", arguments: [bm.id]) ?? 0
+        }
+        let recoveryAdjustments: Int64 = try computeRecoveryAdjustments(forMonth: month)
+        let discretionaryCapacity = plan.plannedAmountMinor - plannedObligations - recoveryAdjustments
+        let unallocatedDiscretionary = discretionaryCapacity - discretionaryBudgeted
+        return (plan.plannedAmountMinor, plannedObligations, discretionaryBudgeted, discretionaryCapacity, unallocatedDiscretionary)
+    }
+
+    /// Computes monthly overspend where overspend = total_actual_spend - total_budgeted.
+    /// Positive overspend indicates the month is overspent.
+    static func computeMonthlyOverspend(forMonth month: String) throws -> (totalBudgeted: Int64, totalActual: Int64, overspend: Int64) {
+        let totalBudgeted = try computeTotalBudgetedAllCategories(forMonth: month)
+        let totalActual = try computeTotalActualSpend(forMonth: month)
+        let overspend = totalActual - totalBudgeted
+        return (totalBudgeted, totalActual, overspend)
     }
 
     /// Computes the total actual spend (purchases only) across all accounts in the current workspace for the given month (YYYY-MM).
@@ -429,26 +620,6 @@ struct Persistence {
                   AND t.date < date(?, '+1 month')
             """, arguments: [workspaceId, start, start]) ?? 0
         }
-    }
-
-    /// Computes the total budgeted amount across all categories (discretionary + obligations) for the given month (YYYY-MM).
-    static func computeTotalBudgetedAllCategories(forMonth month: String) throws -> Int64 {
-        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
-        let bm = try fetchOrCreateBudgetMonth(forMonth: month)
-        return try dbQueue.read { db in
-            let discretionary: Int64 = try Int64.fetchOne(db, sql: "SELECT COALESCE(SUM(amount_minor), 0) FROM budget_category_plan WHERE budget_month_id = ?", arguments: [bm.id]) ?? 0
-            let obligations: Int64 = try Int64.fetchOne(db, sql: "SELECT COALESCE(SUM(amount_minor), 0) FROM obligation_plan WHERE budget_month_id = ?", arguments: [bm.id]) ?? 0
-            return discretionary + obligations
-        }
-    }
-
-    /// Computes monthly overspend where overspend = total_actual_spend - total_budgeted.
-    /// Positive overspend indicates the month is overspent.
-    static func computeMonthlyOverspend(forMonth month: String) throws -> (totalBudgeted: Int64, totalActual: Int64, overspend: Int64) {
-        let totalBudgeted = try computeTotalBudgetedAllCategories(forMonth: month)
-        let totalActual = try computeTotalActualSpend(forMonth: month)
-        let overspend = totalActual - totalBudgeted
-        return (totalBudgeted, totalActual, overspend)
     }
 
     /// Computes actual spend for a category in a given month (YYYY-MM) across all accounts in the current workspace.
@@ -522,22 +693,6 @@ struct Persistence {
         }
     }
 
-    /// Computes totals for planned income, planned obligations (non-discretionary), discretionary budgeted, discretionary capacity, and unallocated discretionary.
-    static func computeBudgetAndObligationSummary(forMonth month: String) throws -> (plannedIncome: Int64, plannedObligations: Int64, discretionaryBudgeted: Int64, discretionaryCapacity: Int64, unallocatedDiscretionary: Int64) {
-        let plan = try fetchOrCreateIncomePlan(forMonth: month)
-        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
-        let bm = try fetchOrCreateBudgetMonth(forMonth: month)
-        let discretionaryBudgeted: Int64 = try dbQueue.read { db in
-            try Int64.fetchOne(db, sql: "SELECT COALESCE(SUM(amount_minor), 0) FROM budget_category_plan WHERE budget_month_id = ?", arguments: [bm.id]) ?? 0
-        }
-        let plannedObligations: Int64 = try dbQueue.read { db in
-            try Int64.fetchOne(db, sql: "SELECT COALESCE(SUM(amount_minor), 0) FROM obligation_plan WHERE budget_month_id = ?", arguments: [bm.id]) ?? 0
-        }
-        let discretionaryCapacity = plan.plannedAmountMinor - plannedObligations
-        let unallocatedDiscretionary = discretionaryCapacity - discretionaryBudgeted
-        return (plan.plannedAmountMinor, plannedObligations, discretionaryBudgeted, discretionaryCapacity, unallocatedDiscretionary)
-    }
-
     /// Clears an obligation amount by deleting the row for the given category in the month.
     static func clearObligationAmount(forMonth month: String, categoryId: String) throws {
         guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
@@ -545,6 +700,144 @@ struct Persistence {
         try dbQueue.write { db in
             try db.execute(sql: "DELETE FROM obligation_plan WHERE budget_month_id = ? AND category_id = ?", arguments: [bm.id, categoryId])
         }
+    }
+
+    // MARK: Recovery Schedules
+
+    /// Lists all active RecoverySchedules for the current workspace, ordered by start_month and created_at.
+    static func listActiveRecoverySchedules() throws -> [RecoverySchedule] {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        let workspaceId = try currentWorkspaceId()
+        let currentMonth: String = {
+            let formatter = DateFormatter()
+            formatter.calendar = Calendar(identifier: .iso8601)
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = "yyyy-MM"
+            return formatter.string(from: Date())
+        }()
+        return try dbQueue.read { db in
+            try RecoverySchedule.fetchAll(db, sql: """
+                SELECT * FROM recovery_schedule
+                WHERE workspace_id = ?
+                  AND start_month >= ?
+                ORDER BY start_month ASC, created_at ASC
+                """, arguments: [workspaceId, currentMonth])
+        }
+    }
+
+    /// Creates a new RecoverySchedule for the current workspace.
+    /// Validates:
+    /// - durationMonths must be between 1 and 3 inclusive
+    /// - monthlyAdjustmentMinor must be positive
+    /// - startMonth must be in YYYY-MM format (basic check)
+    /// - startMonth must not be in the past relative to current month
+    /// - startMonth must be >= earliestStart derived from sourceType and sourceId (one month after source month)
+    /// Throws PersistenceError.invalidRecoverySchedule on validation failure.
+    static func createRecoverySchedule(sourceType: RecoverySchedule.SourceType, sourceId: String, startMonth: String, durationMonths: Int, monthlyAdjustmentMinor: Int64) throws {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        let workspaceId = try currentWorkspaceId()
+        // Basic validation of startMonth format (YYYY-MM)
+        guard startMonth.count == 7 && startMonth.contains("-") else {
+            throw PersistenceError.invalidRecoverySchedule
+        }
+        guard durationMonths >= 1 && durationMonths <= 3 else {
+            throw PersistenceError.invalidRecoverySchedule
+        }
+        guard monthlyAdjustmentMinor > 0 else {
+            throw PersistenceError.invalidRecoverySchedule
+        }
+
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .iso8601)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM"
+
+        let currentMonth = formatter.string(from: Date())
+
+        guard startMonth >= currentMonth else {
+            throw PersistenceError.invalidRecoverySchedule
+        }
+
+        try dbQueue.write { db in
+            // Derive sourceMonth based on sourceType
+            let sourceMonth: String
+            switch sourceType {
+            case .overspend:
+                if sourceId.count == 7 && sourceId.contains("-") {
+                    // Treat sourceId as a YYYY-MM month string
+                    sourceMonth = sourceId
+                } else if let bm = try BudgetMonth.fetchOne(db, key: sourceId) {
+                    // Backward compatibility: treat sourceId as BudgetMonth.id
+                    sourceMonth = bm.month
+                } else {
+                    throw PersistenceError.invalidRecoverySchedule
+                }
+            case .savings_withdrawal:
+                if let tx = try Transaction.fetchOne(db, key: sourceId) {
+                    guard tx.type == .savings_withdrawal else {
+                        throw PersistenceError.invalidRecoverySchedule
+                    }
+                    // tx.date is YYYY-MM-DD; get prefix 7 chars for YYYY-MM
+                    let dateStr = tx.date
+                    guard dateStr.count >= 7 else {
+                        throw PersistenceError.invalidRecoverySchedule
+                    }
+                    sourceMonth = String(dateStr.prefix(7))
+                } else {
+                    throw PersistenceError.invalidRecoverySchedule
+                }
+            }
+
+            // Compute earliestStart = sourceMonth + 1 month
+            guard let earliestStart = try addMonths(toMonth: sourceMonth, monthsToAdd: 1) else {
+                throw PersistenceError.invalidRecoverySchedule
+            }
+
+            guard startMonth >= earliestStart else {
+                throw PersistenceError.invalidRecoverySchedule
+            }
+
+            let schedule = RecoverySchedule(
+                workspaceId: workspaceId,
+                sourceType: sourceType,
+                sourceId: sourceId,
+                startMonth: startMonth,
+                durationMonths: durationMonths,
+                monthlyAdjustmentMinor: monthlyAdjustmentMinor
+            )
+            try schedule.insert(db)
+        }
+    }
+
+    /// Deletes the RecoverySchedule with the given id.
+    /// Returns true if a row was deleted, false otherwise.
+    static func deleteRecoverySchedule(id: String) throws -> Bool {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        return try dbQueue.write { db in
+            let deletedCount = try Int.fetchOne(
+                db,
+                sql: "WITH del AS (DELETE FROM recovery_schedule WHERE id = ?) SELECT changes()",
+                arguments: [id]
+            ) ?? 0
+            return deletedCount > 0
+        }
+    }
+
+    // MARK: Private helpers for month math
+
+    /// Adds months to a YYYY-MM string and returns the resulting YYYY-MM string or nil if invalid.
+    private static func addMonths(toMonth month: String, monthsToAdd: Int) throws -> String? {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .iso8601)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM"
+        guard let date = formatter.date(from: month) else {
+            return nil
+        }
+        guard let newDate = Calendar(identifier: .iso8601).date(byAdding: .month, value: monthsToAdd, to: date) else {
+            return nil
+        }
+        return formatter.string(from: newDate)
     }
 }
 
@@ -556,3 +849,4 @@ private extension Decimal {
         return result
     }
 }
+
