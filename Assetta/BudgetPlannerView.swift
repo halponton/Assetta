@@ -10,6 +10,9 @@ struct BudgetPlannerView: View {
     @State private var budgetTexts: [String: String] = [:] // categoryId -> text
     @State private var nonDiscretionaryCategories: [Category] = []
     @State private var nonDiscretionaryActuals: [String: Int64] = [:]
+
+    @State private var discretionaryActuals: [String: Int64] = [:]
+
     @State private var budgetedMinorByCategory: [String: Int64] = [:]
 
     @State private var obligationTexts: [String: String] = [:] // categoryId -> text
@@ -21,6 +24,10 @@ struct BudgetPlannerView: View {
     @State private var plannedIncome: Int64 = 0
     @State private var totalBudgeted: Int64 = 0
     @State private var unallocated: Int64 = 0
+
+    @State private var monthlyTotalBudgetedAll: Int64 = 0
+    @State private var monthlyTotalActualSpend: Int64 = 0
+    @State private var monthlyOverspend: Int64 = 0
 
     @State private var errorMessage: String = ""
 
@@ -65,7 +72,12 @@ struct BudgetPlannerView: View {
                     VStack(spacing: 8) {
                         ForEach(categories, id: \.id) { cat in
                             HStack(alignment: .firstTextBaseline, spacing: 12) {
-                                Text(cat.name)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(cat.name)
+                                    Text("Actual: \(formatMinorToCurrency(discretionaryActuals[cat.id] ?? 0))  •  Remaining: \(formatMinorToCurrency((budgetedMinorByCategory[cat.id] ?? 0) - (discretionaryActuals[cat.id] ?? 0)))")
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
+                                }
                                 Spacer()
                                 TextField("0.00", text: Binding(
                                     get: { budgetTexts[cat.id] ?? formatMinorToDecimalString(budgetedMinorByCategory[cat.id] ?? 0) },
@@ -91,7 +103,7 @@ struct BudgetPlannerView: View {
                             HStack(alignment: .firstTextBaseline, spacing: 12) {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(cat.name)
-                                    Text("Actual: \(formatMinorToCurrency(nonDiscretionaryActuals[cat.id] ?? 0))")
+                                    Text("Actual: \(formatMinorToCurrency(nonDiscretionaryActuals[cat.id] ?? 0))  •  Remaining: \(formatMinorToCurrency((obligationMinorByCategory[cat.id] ?? 0) - (nonDiscretionaryActuals[cat.id] ?? 0)))")
                                         .font(.footnote)
                                         .foregroundStyle(.secondary)
                                 }
@@ -118,6 +130,11 @@ struct BudgetPlannerView: View {
                     HStack { Text("Discretionary capacity"); Spacer(); Text(formatMinorToCurrency(discretionaryCapacity)).monospacedDigit() }
                     HStack { Text("Discretionary budgeted"); Spacer(); Text(formatMinorToCurrency(totalBudgeted)).monospacedDigit() }
                     HStack { Text("Unallocated discretionary"); Spacer(); Text(formatMinorToCurrency(unallocated)).monospacedDigit() }
+                    HStack { Text("Total budgeted (all categories)"); Spacer(); Text(formatMinorToCurrency(monthlyTotalBudgetedAll)).monospacedDigit() }
+                    HStack { Text("Total actual spend (purchases)"); Spacer(); Text(formatMinorToCurrency(monthlyTotalActualSpend)).monospacedDigit() }
+                    if monthlyOverspend > 0 {
+                        HStack { Text("Overspend this month"); Spacer(); Text(formatMinorToCurrency(monthlyOverspend)).monospacedDigit() }
+                    }
                 }
 
                 if !errorMessage.isEmpty {
@@ -158,8 +175,13 @@ struct BudgetPlannerView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(categories, id: \.id) { cat in
-                        HStack {
-                            Text(cat.name)
+                        HStack(alignment: .firstTextBaseline) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(cat.name)
+                                Text("Actual: \(formatMinorToCurrency(discretionaryActuals[cat.id] ?? 0))  •  Remaining: \(formatMinorToCurrency((budgetedMinorByCategory[cat.id] ?? 0) - (discretionaryActuals[cat.id] ?? 0)))")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
                             Spacer()
                             TextField("0.00", text: Binding(
                                 get: { budgetTexts[cat.id] ?? formatMinorToDecimalString(budgetedMinorByCategory[cat.id] ?? 0) },
@@ -185,7 +207,7 @@ struct BudgetPlannerView: View {
                         HStack(alignment: .firstTextBaseline) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(cat.name)
-                                Text("Actual: \(formatMinorToCurrency(nonDiscretionaryActuals[cat.id] ?? 0))")
+                                Text("Actual: \(formatMinorToCurrency(nonDiscretionaryActuals[cat.id] ?? 0))  •  Remaining: \(formatMinorToCurrency((obligationMinorByCategory[cat.id] ?? 0) - (nonDiscretionaryActuals[cat.id] ?? 0)))")
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)
                             }
@@ -211,6 +233,11 @@ struct BudgetPlannerView: View {
                 HStack { Text("Discretionary capacity"); Spacer(); Text(formatMinorToCurrency(discretionaryCapacity)).monospacedDigit() }
                 HStack { Text("Discretionary budgeted"); Spacer(); Text(formatMinorToCurrency(totalBudgeted)).monospacedDigit() }
                 HStack { Text("Unallocated discretionary"); Spacer(); Text(formatMinorToCurrency(unallocated)).monospacedDigit() }
+                HStack { Text("Total budgeted (all categories)"); Spacer(); Text(formatMinorToCurrency(monthlyTotalBudgetedAll)).monospacedDigit() }
+                HStack { Text("Total actual spend (purchases)"); Spacer(); Text(formatMinorToCurrency(monthlyTotalActualSpend)).monospacedDigit() }
+                if monthlyOverspend > 0 {
+                    HStack { Text("Overspend this month"); Spacer(); Text(formatMinorToCurrency(monthlyOverspend)).monospacedDigit() }
+                }
             }
 
             if !errorMessage.isEmpty {
@@ -273,6 +300,20 @@ struct BudgetPlannerView: View {
             }
             nonDiscretionaryActuals = ndActuals
 
+            // Compute actuals for discretionary categories
+            var dActuals: [String: Int64] = [:]
+            for cat in categories {
+                let actual = try Persistence.computeActualSpend(forMonth: month, categoryId: cat.id)
+                dActuals[cat.id] = actual
+            }
+            discretionaryActuals = dActuals
+
+            // Monthly totals and overspend
+            let monthly = try Persistence.computeMonthlyOverspend(forMonth: month)
+            monthlyTotalBudgetedAll = monthly.totalBudgeted
+            monthlyTotalActualSpend = monthly.totalActual
+            monthlyOverspend = monthly.overspend
+
             let summary = try Persistence.computeBudgetAndObligationSummary(forMonth: month)
             plannedIncome = summary.plannedIncome
             plannedObligations = summary.plannedObligations
@@ -291,6 +332,7 @@ struct BudgetPlannerView: View {
             try Persistence.upsertBudgetAmount(forMonth: month, categoryId: catId, amountMinor: minor)
             budgetedMinorByCategory[catId] = minor
             refreshSummary()
+            DispatchQueue.main.async { load() }
         } catch {
             errorMessage = String(describing: error)
         }
@@ -315,6 +357,7 @@ struct BudgetPlannerView: View {
             }
             // Refresh summary after saving both sets
             refreshSummary()
+            DispatchQueue.main.async { load() }
         } catch {
             errorMessage = String(describing: error)
         }
@@ -327,6 +370,7 @@ struct BudgetPlannerView: View {
             try Persistence.upsertObligationAmount(forMonth: month, categoryId: catId, amountMinor: minor)
             obligationMinorByCategory[catId] = minor
             refreshSummary()
+            DispatchQueue.main.async { load() }
         } catch {
             errorMessage = String(describing: error)
         }
@@ -385,3 +429,4 @@ struct BudgetPlannerView: View {
         return nil
     }
 }
+

@@ -259,6 +259,74 @@ struct Persistence {
         return (plan.plannedAmountMinor, totalBudgeted, unallocated)
     }
 
+    /// Computes the planned (budgeted) amount for a specific category in a given month (YYYY-MM).
+    /// The category may be discretionary (budget_category_plan) or non-discretionary (obligation_plan).
+    /// Returns 0 when no plan exists.
+    static func computePlannedAmount(forMonth month: String, categoryId: String) throws -> Int64 {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        let bm = try fetchOrCreateBudgetMonth(forMonth: month)
+        return try dbQueue.read { db in
+            let discretionary: Int64 = try Int64.fetchOne(
+                db,
+                sql: "SELECT COALESCE(amount_minor, 0) FROM budget_category_plan WHERE budget_month_id = ? AND category_id = ?",
+                arguments: [bm.id, categoryId]
+            ) ?? 0
+            let obligation: Int64 = try Int64.fetchOne(
+                db,
+                sql: "SELECT COALESCE(amount_minor, 0) FROM obligation_plan WHERE budget_month_id = ? AND category_id = ?",
+                arguments: [bm.id, categoryId]
+            ) ?? 0
+            return discretionary + obligation
+        }
+    }
+
+    /// Computes overspend for a specific category in a given month.
+    /// Returns a tuple of (budgeted, actual, overspend) where overspend = actual - budgeted.
+    static func computeCategoryOverspend(forMonth month: String, categoryId: String) throws -> (budgeted: Int64, actual: Int64, overspend: Int64) {
+        let budgeted = try computePlannedAmount(forMonth: month, categoryId: categoryId)
+        let actual = try computeActualSpend(forMonth: month, categoryId: categoryId)
+        let overspend = actual - budgeted
+        return (budgeted, actual, overspend)
+    }
+
+    /// Computes the total actual spend (purchases only) across all accounts in the current workspace for the given month (YYYY-MM).
+    static func computeTotalActualSpend(forMonth month: String) throws -> Int64 {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        let workspaceId = try currentWorkspaceId()
+        let start = month + "-01"
+        return try dbQueue.read { db in
+            try Int64.fetchOne(db, sql: """
+                SELECT COALESCE(SUM(t.amount_minor), 0)
+                FROM "transaction" t
+                JOIN account a ON a.id = t.account_id
+                WHERE a.workspace_id = ?
+                  AND t.type = 'purchase'
+                  AND t.date >= ?
+                  AND t.date < date(?, '+1 month')
+            """, arguments: [workspaceId, start, start]) ?? 0
+        }
+    }
+
+    /// Computes the total budgeted amount across all categories (discretionary + obligations) for the given month (YYYY-MM).
+    static func computeTotalBudgetedAllCategories(forMonth month: String) throws -> Int64 {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        let bm = try fetchOrCreateBudgetMonth(forMonth: month)
+        return try dbQueue.read { db in
+            let discretionary: Int64 = try Int64.fetchOne(db, sql: "SELECT COALESCE(SUM(amount_minor), 0) FROM budget_category_plan WHERE budget_month_id = ?", arguments: [bm.id]) ?? 0
+            let obligations: Int64 = try Int64.fetchOne(db, sql: "SELECT COALESCE(SUM(amount_minor), 0) FROM obligation_plan WHERE budget_month_id = ?", arguments: [bm.id]) ?? 0
+            return discretionary + obligations
+        }
+    }
+
+    /// Computes monthly overspend where overspend = total_actual_spend - total_budgeted.
+    /// Positive overspend indicates the month is overspent.
+    static func computeMonthlyOverspend(forMonth month: String) throws -> (totalBudgeted: Int64, totalActual: Int64, overspend: Int64) {
+        let totalBudgeted = try computeTotalBudgetedAllCategories(forMonth: month)
+        let totalActual = try computeTotalActualSpend(forMonth: month)
+        let overspend = totalActual - totalBudgeted
+        return (totalBudgeted, totalActual, overspend)
+    }
+
     /// Computes actual spend for a category in a given month (YYYY-MM) across all accounts in the current workspace.
     /// Only includes transactions of type 'purchase' with matching category and date in the month.
     static func computeActualSpend(forMonth month: String, categoryId: String) throws -> Int64 {
