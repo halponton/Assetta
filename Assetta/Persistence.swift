@@ -39,6 +39,49 @@ struct Persistence {
         }
     }
 
+    // MARK: Savings Helpers
+    /// Lists all savings accounts for the current workspace.
+    static func listSavingsAccounts() throws -> [Account] {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        let workspaceId = try currentWorkspaceId()
+        return try dbQueue.read { db in
+            try Account.fetchAll(db, sql: "SELECT * FROM account WHERE workspace_id = ? AND type = 'savings' ORDER BY name COLLATE NOCASE", arguments: [workspaceId])
+        }
+    }
+
+    /// Computes the current savings balance for a specific savings account by summing contributions and withdrawals.
+    /// Balance = SUM(savings_contribution) - SUM(savings_withdrawal)
+    static func computeSavingsBalance(accountId: String) throws -> Int64 {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        return try dbQueue.read { db in
+            try Int64.fetchOne(db, sql: """
+                SELECT COALESCE(SUM(CASE 
+                    WHEN t.type = 'savings_contribution' THEN t.amount_minor
+                    WHEN t.type = 'savings_withdrawal' THEN -t.amount_minor
+                    ELSE 0 END), 0)
+                FROM "transaction" t
+                WHERE t.account_id = ?
+            """, arguments: [accountId]) ?? 0
+        }
+    }
+
+    /// Computes the total savings balance across all savings accounts in the current workspace.
+    static func computeTotalSavingsBalanceForWorkspace() throws -> Int64 {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        let workspaceId = try currentWorkspaceId()
+        return try dbQueue.read { db in
+            try Int64.fetchOne(db, sql: """
+                SELECT COALESCE(SUM(CASE 
+                    WHEN t.type = 'savings_contribution' THEN t.amount_minor
+                    WHEN t.type = 'savings_withdrawal' THEN -t.amount_minor
+                    ELSE 0 END), 0)
+                FROM "transaction" t
+                JOIN account a ON a.id = t.account_id
+                WHERE a.workspace_id = ? AND a.type = 'savings'
+            """, arguments: [workspaceId]) ?? 0
+        }
+    }
+
     // MARK: Categories
     static func listCategories() throws -> [Category] {
         guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
@@ -62,20 +105,35 @@ struct Persistence {
     static func deleteCategory(id: String) throws {
         guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
         try dbQueue.write { db in
-            // Prevent deleting categories that are referenced by transactions
-            let referencingCount = try Int.fetchOne(
+            // Prevent deleting categories that are referenced anywhere (transactions, budget plans, obligations)
+            let txCount = try Int.fetchOne(
                 db,
                 sql: "SELECT COUNT(*) FROM \"transaction\" WHERE category_id = ?",
                 arguments: [id]
             ) ?? 0
-            if referencingCount > 0 {
+            let budgetPlanCount = try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM budget_category_plan WHERE category_id = ?",
+                arguments: [id]
+            ) ?? 0
+            let obligationCount = try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM obligation_plan WHERE category_id = ?",
+                arguments: [id]
+            ) ?? 0
+            if txCount > 0 || budgetPlanCount > 0 || obligationCount > 0 {
                 throw PersistenceError.categoryInUse
             }
 
-            try db.execute(
-                sql: "DELETE FROM category WHERE id = ?",
-                arguments: [id]
-            )
+            do {
+                try db.execute(
+                    sql: "DELETE FROM category WHERE id = ?",
+                    arguments: [id]
+                )
+            } catch {
+                // If a FK constraint still exists (race or missed pre-check), surface a friendly error
+                throw PersistenceError.categoryInUse
+            }
         }
     }
 
@@ -87,7 +145,7 @@ struct Persistence {
         }
     }
 
-    static func createTransaction(accountId: String, date: Date, amountMajor: Decimal, type: Transaction.TransactionType, notes: String?) throws {
+    static func createTransaction(accountId: String, date: Date, amountMajor: Decimal, type: Transaction.TransactionType, notes: String?, categoryId: String?) throws {
         guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .iso8601)
@@ -99,7 +157,10 @@ struct Persistence {
         let amountMinor = (amountMajor * 100).rounded(0)
         let minorInt = NSDecimalNumber(decimal: amountMinor).int64Value
 
-        let tx = Transaction(accountId: accountId, date: dateString, amountMinor: minorInt, type: type, notes: notes)
+        // Enforce category applicability: only for purchase and fees_interest. Others must be nil.
+        let effectiveCategoryId: String? = (type == .purchase || type == .fees_interest) ? categoryId : nil
+
+        let tx = Transaction(accountId: accountId, date: dateString, amountMinor: minorInt, type: type, categoryId: effectiveCategoryId, notes: notes)
         try dbQueue.write { db in
             try tx.insert(db)
         }
@@ -117,8 +178,14 @@ struct Persistence {
         let amountMinor = (amountMajor * 100).rounded(0)
         let minorInt = NSDecimalNumber(decimal: amountMinor).int64Value
 
-        // Enforce category applicability: only for purchase and fees_interest
-        let effectiveCategoryId: String? = (type == .purchase || type == .fees_interest) ? categoryId : nil
+        // Enforce category applicability: only allowed for purchase and fees_interest.
+        // Savings and all other movement types must never have a category.
+        let effectiveCategoryId: String?
+        if type == .purchase || type == .fees_interest {
+            effectiveCategoryId = categoryId
+        } else {
+            effectiveCategoryId = nil
+        }
 
         try dbQueue.write { db in
             try db.execute(
@@ -145,6 +212,63 @@ struct Persistence {
                 sql: "DELETE FROM \"transaction\" WHERE id = ?",
                 arguments: [id]
             )
+        }
+    }
+
+    /// Counts all transactions in the database.
+    static func countAllTransactions() throws -> Int {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        return try dbQueue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM \"transaction\"") ?? 0
+        }
+    }
+
+    /// Counts transactions that reference a given category id.
+    static func countTransactionsReferencingCategory(categoryId: String) throws -> Int {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        return try dbQueue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM \"transaction\" WHERE category_id = ?", arguments: [categoryId]) ?? 0
+        }
+    }
+
+    /// Deletes all transactions. DEBUG/DANGEROUS.
+    static func deleteAllTransactions() throws {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        try dbQueue.write { db in
+            try db.execute(sql: "DELETE FROM \"transaction\"")
+        }
+    }
+
+    // MARK: Debug Helpers for Plans
+    /// Counts all discretionary budget plan rows.
+    static func countAllBudgetPlans() throws -> Int {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        return try dbQueue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM budget_category_plan") ?? 0
+        }
+    }
+
+    /// Counts all obligation plan rows.
+    static func countAllObligations() throws -> Int {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        return try dbQueue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM obligation_plan") ?? 0
+        }
+    }
+
+    /// Deletes all budget plan rows (discretionary).
+    static func deleteAllBudgetPlans() throws {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        try dbQueue.write { db in
+            try db.execute(sql: "DELETE FROM budget_category_plan")
+        }
+    }
+
+    /// Deletes all obligation plan rows (non-discretionary).
+    static func deleteAllObligations() throws {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        try dbQueue.write { db in
+            try db.execute(sql: "DELETE FROM obligation_plan")
         }
     }
 

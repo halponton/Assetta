@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AccountsView: View {
     @State private var accounts: [Account] = []
+    @State private var savingsBalances: [String: Int64] = [:]
     @State private var selected: Account?
     @SceneStorage("selectedAccountId") private var selectedAccountId: String?
     @State private var showingAdd = false
@@ -9,6 +10,9 @@ struct AccountsView: View {
     @State private var showingIncomePlan = false
     @State private var showingBudgetPlanner = false
     @State private var errorMessage: String?
+    #if DEBUG
+    @State private var showingDebug = false
+    #endif
 
     var body: some View {
         NavigationSplitView {
@@ -24,8 +28,8 @@ struct AccountsView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List(selection: $selected) {
-                    ForEach(accounts, id: \.id) { account in
-                        NavigationLink(value: account) {
+                    Section("Spending & Other Accounts") {
+                        ForEach(accounts.filter { $0.type != .savings }, id: \.id) { account in
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(account.name)
                                     .font(.headline)
@@ -41,12 +45,47 @@ struct AccountsView: View {
                                 }
                                 .font(.subheadline)
                             }
+                            .tag(account)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                selected = account
+                                selectedAccountId = account.id
+                            }
+                        }
+                    }
+                    Section("Savings") {
+                        ForEach(accounts.filter { $0.type == .savings }, id: \.id) { account in
+                            HStack(alignment: .firstTextBaseline) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(account.name)
+                                        .font(.headline)
+                                    HStack(spacing: 6) {
+                                        Text(account.type.rawValue)
+                                            .foregroundStyle(.secondary)
+                                        if let inst = account.institution, !inst.isEmpty {
+                                            Text("·")
+                                                .foregroundStyle(.secondary)
+                                            Text(inst)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
+                                    .font(.subheadline)
+                                }
+                                Spacer()
+                                Text(formatMinorToCurrency(savingsBalances[account.id] ?? 0))
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
+                            }
+                            .tag(account)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                selected = account
+                                selectedAccountId = account.id
+                            }
                         }
                     }
                 }
-                .onChange(of: selected) { _, newValue in
-                    selectedAccountId = newValue?.id
-                }
+                .listStyle(.sidebar)
                 .navigationTitle("Accounts")
                 .toolbar {
                     Button("Add Account") { showingAdd = true }
@@ -56,6 +95,9 @@ struct AccountsView: View {
                     Button("Manage Categories") { DispatchQueue.main.async { showingCategories = true } }
                     Button("Income Plan") { showingIncomePlan = true }
                     Button("Budget Planner") { showingBudgetPlanner = true }
+                    #if DEBUG
+                    Button("Debug") { showingDebug = true }
+                    #endif
                 }
             }
         } detail: {
@@ -100,12 +142,28 @@ struct AccountsView: View {
                 .frame(minWidth: 420)
             #endif
         }
+        #if DEBUG
+        .sheet(isPresented: $showingDebug) {
+            DebugToolsView()
+                .frame(minWidth: 420, minHeight: 240)
+        }
+        #endif
         .task {
             reload()
             if selected == nil, let id = selectedAccountId, let acc = accounts.first(where: { $0.id == id }) {
                 selected = acc
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TransactionsDidChange"))) { _ in
+            reload()
+        }
+        #if DEBUG
+        .onChange(of: showingDebug) { wasShowing, isShowing in
+            if wasShowing && !isShowing {
+                reload()
+            }
+        }
+        #endif
         .alert("Error", isPresented: .constant(errorMessage != nil), actions: {
             Button("OK") { errorMessage = nil }
         }, message: {
@@ -116,12 +174,28 @@ struct AccountsView: View {
     private func reload() {
         do {
             accounts = try Persistence.listAccounts()
+            // Precompute savings balances
+            var balances: [String: Int64] = [:]
+            for acc in accounts where acc.type == .savings {
+                balances[acc.id] = try Persistence.computeSavingsBalance(accountId: acc.id)
+            }
+            savingsBalances = balances
             if selected == nil, let id = selectedAccountId, let acc = accounts.first(where: { $0.id == id }) {
                 selected = acc
             }
         } catch {
             errorMessage = String(describing: error)
         }
+    }
+
+    private func formatMinorToCurrency(_ minor: Int64) -> String {
+        let number = NSDecimalNumber(value: minor).dividing(by: 100)
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = Locale.current.currency?.identifier ?? "GBP"
+        formatter.minimumFractionDigits = 2
+        formatter.maximumFractionDigits = 2
+        return formatter.string(from: number) ?? "\(number)"
     }
 }
 
@@ -169,4 +243,84 @@ private struct AddAccountView: View {
         }
     }
 }
+
+#if DEBUG
+private struct DebugToolsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var totalTransactions: Int = 0
+    @State private var totalBudgetPlans: Int = 0
+    @State private var totalObligations: Int = 0
+    @State private var errorMessage: String?
+    @State private var showingConfirm = false
+    @State private var showingConfirmClearPlans = false
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Database") {
+                    HStack { Text("Total transactions"); Spacer(); Text(String(totalTransactions)).monospacedDigit() }
+                    HStack { Text("Budget plans (discretionary)"); Spacer(); Text(String(totalBudgetPlans)).monospacedDigit() }
+                    HStack { Text("Obligations (non-discretionary)"); Spacer(); Text(String(totalObligations)).monospacedDigit() }
+                }
+                Section("Danger Zone") {
+                    Button(role: .destructive) { showingConfirm = true } label: {
+                        Text("Delete ALL transactions")
+                    }
+                    Button(role: .destructive) { showingConfirmClearPlans = true } label: {
+                        Text("Delete ALL budget plans & obligations")
+                    }
+                }
+                if let msg = errorMessage { Section { Text(msg).foregroundStyle(.red) } }
+            }
+            .navigationTitle("Debug Tools")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
+            }
+            .task { reloadCounts() }
+            .confirmationDialog("Delete ALL transactions?", isPresented: $showingConfirm, titleVisibility: .visible) {
+                Button("Delete", role: .destructive) { deleteAllTransactions() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This action cannot be undone.")
+            }
+            .confirmationDialog("Delete ALL budget plans & obligations?", isPresented: $showingConfirmClearPlans, titleVisibility: .visible) {
+                Button("Delete", role: .destructive) { deleteAllPlans() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This action cannot be undone.")
+            }
+        }
+    }
+
+    private func reloadCounts() {
+        do {
+            totalTransactions = try Persistence.countAllTransactions()
+            totalBudgetPlans = try Persistence.countAllBudgetPlans()
+            totalObligations = try Persistence.countAllObligations()
+        } catch {
+            errorMessage = String(describing: error)
+        }
+    }
+
+    private func deleteAllTransactions() {
+        do {
+            try Persistence.deleteAllTransactions()
+            reloadCounts()
+            NotificationCenter.default.post(name: Notification.Name("TransactionsDidChange"), object: nil)
+        } catch {
+            errorMessage = String(describing: error)
+        }
+    }
+
+    private func deleteAllPlans() {
+        do {
+            try Persistence.deleteAllBudgetPlans()
+            try Persistence.deleteAllObligations()
+            reloadCounts()
+            NotificationCenter.default.post(name: Notification.Name("BudgetPlansDidChange"), object: nil)
+        } catch {
+            errorMessage = String(describing: error)
+        }
+    }
+}
+#endif
 

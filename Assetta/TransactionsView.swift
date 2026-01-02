@@ -2,6 +2,7 @@ import SwiftUI
 
 struct TransactionsView: View {
     let account: Account
+    private var isSavingsAccount: Bool { account.type == .savings }
 
     @State private var transactions: [Transaction] = []
     @State private var showingAdd = false
@@ -42,7 +43,7 @@ struct TransactionsView: View {
                         .font(.subheadline)
                         HStack(spacing: 6) {
                             Text(tx.type.rawValue)
-                            if let catId = tx.categoryId, let catName = categoryNamesById[catId] {
+                            if (tx.type == .purchase || tx.type == .fees_interest), let catId = tx.categoryId, let catName = categoryNamesById[catId] {
                                 Text("·")
                                 Text(catName)
                             }
@@ -93,14 +94,14 @@ struct TransactionsView: View {
             #endif
         }
         .sheet(isPresented: $showingAdd) {
-            AddTransactionView(account: account) { didCreate in
+            AddTransactionView(account: account, categories: categories, isSavingsAccount: isSavingsAccount) { didCreate in
                 if didCreate { DispatchQueue.main.async { reload() } }
             }
             .frame(minWidth: 420)
         }
         .sheet(isPresented: $showingEdit, onDismiss: { selectedTransaction = nil }) {
             if let tx = selectedTransaction, let initial = editInitialState(for: tx) {
-                EditTransactionView(initial: initial, categories: categories) { result in
+                EditTransactionView(initial: initial, categories: categories, isSavingsAccount: isSavingsAccount) { result in
                     switch result {
                     case .cancel:
                         break
@@ -115,6 +116,14 @@ struct TransactionsView: View {
         }
         .task { reload() }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("CategoriesDidChange"))) { _ in
+            reload()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TransactionsDidChange"))) { _ in
+            reload()
+        }
+        .onChange(of: account.id) { oldId, newId in
+            selectedTransaction = nil
+            transactions = []
             reload()
         }
         .confirmationDialog(
@@ -216,6 +225,7 @@ private struct EditTransactionView: View {
     @Environment(\.dismiss) private var dismiss
     let initial: EditTransactionInitialState
     let categories: [Category]
+    let isSavingsAccount: Bool
     var onComplete: (EditTransactionResult) -> Void
 
     @State private var date: Date
@@ -226,9 +236,10 @@ private struct EditTransactionView: View {
 
     @State private var selectedCategoryId: String?
 
-    init(initial: EditTransactionInitialState, categories: [Category], onComplete: @escaping (EditTransactionResult) -> Void) {
+    init(initial: EditTransactionInitialState, categories: [Category], isSavingsAccount: Bool, onComplete: @escaping (EditTransactionResult) -> Void) {
         self.initial = initial
         self.categories = categories
+        self.isSavingsAccount = isSavingsAccount
         self.onComplete = onComplete
         _date = State(initialValue: initial.date)
         _type = State(initialValue: initial.type)
@@ -252,8 +263,22 @@ private struct EditTransactionView: View {
                     .keyboardType(.decimalPad)
                     #endif
                 Picker("Type", selection: $type) {
-                    ForEach(Transaction.TransactionType.allCases, id: \.self) { t in
+                    ForEach(Transaction.TransactionType.allCases.filter { option in
+                        if isSavingsAccount {
+                            return option == .savings_contribution || option == .savings_withdrawal
+                        } else {
+                            // Savings movement types are allowed on any account per ledger rules, but
+                            // contributions should be recorded on the savings account itself. To keep UI strict,
+                            // we hide savings types unless this is a savings account.
+                            return option != .savings_contribution && option != .savings_withdrawal
+                        }
+                    }, id: \.self) { t in
                         Text(t.rawValue).tag(t)
+                    }
+                }
+                .onChange(of: type) { oldType, newType in
+                    if !(newType == .purchase || newType == .fees_interest) {
+                        selectedCategoryId = nil
                     }
                 }
                 if type == .purchase || type == .fees_interest {
@@ -267,15 +292,15 @@ private struct EditTransactionView: View {
                         }
                     }
                 }
-                TextEditor(text: $notes)
-                    .frame(minHeight: 80)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 5)
-                            .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
-                    )
-                    .padding(.top, 4)
-                    .accessibilityLabel("Notes (optional)")
             }
+            TextEditor(text: $notes)
+                .frame(minHeight: 80)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5)
+                        .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+                )
+                .padding(.top, 4)
+                .accessibilityLabel("Notes (optional)")
             .navigationTitle("Edit Transaction")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss(); onComplete(.cancel) } }
@@ -304,7 +329,9 @@ private struct EditTransactionView: View {
     private func save() {
         guard let amount = parseAmountMajor() else { return }
         do {
-            try Persistence.updateTransaction(id: initial.id, date: date, amountMajor: amount, type: type, notes: notes.isEmpty ? nil : notes, categoryId: selectedCategoryId)
+            let catIdToSave: String? = (type == .purchase || type == .fees_interest) ? selectedCategoryId : nil
+            try Persistence.updateTransaction(id: initial.id, date: date, amountMajor: amount, type: type, notes: notes.isEmpty ? nil : notes, categoryId: catIdToSave)
+            NotificationCenter.default.post(name: Notification.Name("TransactionsDidChange"), object: nil)
             dismiss(); onComplete(.saved)
         } catch {
             errorMessage = String(describing: error)
@@ -314,11 +341,22 @@ private struct EditTransactionView: View {
 private struct AddTransactionView: View {
     @Environment(\.dismiss) private var dismiss
     let account: Account
+    let categories: [Category]
+    let isSavingsAccount: Bool
     var onComplete: (Bool) -> Void
+
+    init(account: Account, categories: [Category], isSavingsAccount: Bool, onComplete: @escaping (Bool) -> Void) {
+        self.account = account
+        self.categories = categories
+        self.isSavingsAccount = isSavingsAccount
+        self.onComplete = onComplete
+        _type = State(initialValue: isSavingsAccount ? .savings_contribution : .purchase)
+    }
 
     @State private var date: Date = Date()
     @State private var amountMajorText: String = ""
-    @State private var type: Transaction.TransactionType = .purchase
+    @State private var type: Transaction.TransactionType
+    @State private var selectedCategoryId: String? = nil
     @State private var notes: String = ""
     @State private var errorMessage: String?
 
@@ -332,18 +370,35 @@ private struct AddTransactionView: View {
                     .keyboardType(.decimalPad)
                     #endif
                 Picker("Type", selection: $type) {
-                    ForEach(Transaction.TransactionType.allCases, id: \.self) { t in
+                    ForEach(Transaction.TransactionType.allCases.filter { option in
+                        if isSavingsAccount {
+                            return option == .savings_contribution || option == .savings_withdrawal
+                        } else {
+                            // Savings movement types are allowed on any account per ledger rules, but
+                            // contributions should be recorded on the savings account itself. To keep UI strict,
+                            // we hide savings types unless this is a savings account.
+                            return option != .savings_contribution && option != .savings_withdrawal
+                        }
+                    }, id: \.self) { t in
                         Text(t.rawValue).tag(t)
                     }
                 }
-                TextEditor(text: $notes)
-                    .frame(minHeight: 80)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 5)
-                            .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
-                    )
-                    .padding(.top, 4)
-                    .accessibilityLabel("Notes (optional)")
+                .onChange(of: type) { oldType, newType in
+                    if !(newType == .purchase || newType == .fees_interest) {
+                        selectedCategoryId = nil
+                    }
+                }
+                if type == .purchase || type == .fees_interest {
+                    Picker("Category", selection: Binding(
+                        get: { selectedCategoryId ?? "" },
+                        set: { selectedCategoryId = $0.isEmpty ? nil : $0 }
+                    )) {
+                        Text("No Category").tag("")
+                        ForEach(categories, id: \.id) { cat in
+                            Text(cat.name).tag(cat.id)
+                        }
+                    }
+                }
             }
             .navigationTitle("Add Transaction")
             .toolbar {
@@ -373,7 +428,8 @@ private struct AddTransactionView: View {
     private func save() {
         guard let amount = parseAmountMajor() else { return }
         do {
-            try Persistence.createTransaction(accountId: account.id, date: date, amountMajor: amount, type: type, notes: notes.isEmpty ? nil : notes)
+            try Persistence.createTransaction(accountId: account.id, date: date, amountMajor: amount, type: type, notes: notes.isEmpty ? nil : notes, categoryId: selectedCategoryId)
+            NotificationCenter.default.post(name: Notification.Name("TransactionsDidChange"), object: nil)
             dismiss(); onComplete(true)
         } catch {
             errorMessage = String(describing: error)
