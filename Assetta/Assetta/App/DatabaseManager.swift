@@ -245,6 +245,54 @@ final class DatabaseManager {
             }
             try db.create(index: "idx_income_plan_workspace_month", on: "income_plan", columns: ["workspace_id", "month"]) // accelerator for lookups
         }
+        migrator.registerMigration("v7_budget") { db in
+            // BudgetMonth table
+            try db.create(table: "budget_month") { t in
+                t.column("id", .text).notNull()
+                t.primaryKey(["id"]) // TEXT PK (UUID)
+
+                t.column("workspace_id", .integer).notNull()
+                t.foreignKey(["workspace_id"], references: "workspace", columns: ["id"], onDelete: .cascade)
+
+                // Month in format YYYY-MM
+                t.column("month", .text).notNull()
+
+                // Creation timestamp (ISO-8601 string)
+                t.column("created_at", .text).notNull()
+
+                // Unique per workspace and month
+                t.uniqueKey(["workspace_id", "month"])
+            }
+            try db.create(index: "idx_budget_month_workspace_month", on: "budget_month", columns: ["workspace_id", "month"]) // accelerator for lookups
+
+            // BudgetCategoryPlan table
+            try db.create(table: "budget_category_plan") { t in
+                t.column("budget_month_id", .text).notNull()
+                t.column("category_id", .text).notNull()
+                t.column("amount_minor", .integer).notNull()
+
+                // Composite primary key
+                t.primaryKey(["budget_month_id", "category_id"])
+
+                // FKs
+                t.foreignKey(["budget_month_id"], references: "budget_month", columns: ["id"], onDelete: .cascade)
+                t.foreignKey(["category_id"], references: "category", columns: ["id"]) // no cascade delete
+            }
+            try db.create(index: "idx_budget_category_plan_month", on: "budget_category_plan", columns: ["budget_month_id"]) // join aid
+        }
+        migrator.registerMigration("v8_obligation_plan") { db in
+            // Planned obligations for non-discretionary categories
+            try db.create(table: "obligation_plan") { t in
+                t.column("budget_month_id", .text).notNull()
+                t.column("category_id", .text).notNull()
+                t.column("amount_minor", .integer).notNull()
+
+                t.primaryKey(["budget_month_id", "category_id"]) // composite PK
+                t.foreignKey(["budget_month_id"], references: "budget_month", columns: ["id"], onDelete: .cascade)
+                t.foreignKey(["category_id"], references: "category", columns: ["id"]) // no cascade delete
+            }
+            try db.create(index: "idx_obligation_plan_month", on: "obligation_plan", columns: ["budget_month_id"]) // join aid
+        }
         try migrator.migrate(queue)
 
         dbQueue = queue

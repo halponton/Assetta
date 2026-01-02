@@ -7,6 +7,7 @@ struct AccountsView: View {
     @State private var showingAdd = false
     @State private var showingCategories = false
     @State private var showingIncomePlan = false
+    @State private var showingBudgetPlanner = false
     @State private var errorMessage: String?
 
     var body: some View {
@@ -54,6 +55,7 @@ struct AccountsView: View {
 #endif
                     Button("Manage Categories") { DispatchQueue.main.async { showingCategories = true } }
                     Button("Income Plan") { showingIncomePlan = true }
+                    Button("Budget Planner") { showingBudgetPlanner = true }
                 }
             }
         } detail: {
@@ -86,6 +88,14 @@ struct AccountsView: View {
             IncomePlanView()
             #if os(macOS)
                 .frame(minWidth: 720, minHeight: 520)
+            #else
+                .frame(minWidth: 420)
+            #endif
+        }
+        .sheet(isPresented: $showingBudgetPlanner) {
+            BudgetPlannerView()
+            #if os(macOS)
+                .frame(minWidth: 800, minHeight: 600)
             #else
                 .frame(minWidth: 420)
             #endif
