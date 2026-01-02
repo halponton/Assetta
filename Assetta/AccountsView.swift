@@ -6,6 +6,7 @@ struct AccountsView: View {
     @SceneStorage("selectedAccountId") private var selectedAccountId: String?
     @State private var showingAdd = false
     @State private var showingCategories = false
+    @State private var showingIncomePlan = false
     @State private var errorMessage: String?
 
     var body: some View {
@@ -52,6 +53,7 @@ struct AccountsView: View {
                     .keyboardShortcut("n", modifiers: [.command])
 #endif
                     Button("Manage Categories") { DispatchQueue.main.async { showingCategories = true } }
+                    Button("Income Plan") { showingIncomePlan = true }
                 }
             }
         } detail: {
@@ -79,6 +81,14 @@ struct AccountsView: View {
         .sheet(isPresented: $showingCategories) {
             CategoriesView()
                 .frame(minWidth: 700, minHeight: 500)
+        }
+        .sheet(isPresented: $showingIncomePlan) {
+            IncomePlanView()
+            #if os(macOS)
+                .frame(minWidth: 720, minHeight: 520)
+            #else
+                .frame(minWidth: 420)
+            #endif
         }
         .task {
             reload()

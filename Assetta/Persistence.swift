@@ -147,6 +147,65 @@ struct Persistence {
             )
         }
     }
+
+    // MARK: Income Plans
+    /// Fetches the IncomePlan for a given workspace and month (YYYY-MM), or creates one with zero planned amount.
+    static func fetchOrCreateIncomePlan(forMonth month: String) throws -> IncomePlan {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        let workspaceId = try currentWorkspaceId()
+        return try dbQueue.write { db in
+            if let plan = try IncomePlan.fetchOne(db, sql: "SELECT * FROM income_plan WHERE workspace_id = ? AND month = ?", arguments: [workspaceId, month]) {
+                return plan
+            } else {
+                let plan = IncomePlan(workspaceId: workspaceId, month: month, plannedAmountMinor: 0)
+                try plan.insert(db)
+                return plan
+            }
+        }
+    }
+
+    /// Updates or creates the IncomePlan for a given month with the provided planned amount in minor units.
+    static func upsertIncomePlan(forMonth month: String, plannedAmountMinor: Int64) throws {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        let workspaceId = try currentWorkspaceId()
+        try dbQueue.write { db in
+            if var plan = try IncomePlan.fetchOne(db, sql: "SELECT * FROM income_plan WHERE workspace_id = ? AND month = ?", arguments: [workspaceId, month]) {
+                plan.plannedAmountMinor = plannedAmountMinor
+                try plan.update(db)
+            } else {
+                let plan = IncomePlan(workspaceId: workspaceId, month: month, plannedAmountMinor: plannedAmountMinor)
+                try plan.insert(db)
+            }
+        }
+    }
+
+    /// Computes the actual income for a given month (YYYY-MM) by summing income transactions within that month for the current workspace.
+    static func computeActualIncome(forMonth month: String) throws -> Int64 {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        let workspaceId = try currentWorkspaceId()
+        // Sum income over all accounts in the workspace for dates within the month
+        return try dbQueue.read { db in
+            let start = month + "-01"
+            let sum: Int64? = try Int64.fetchOne(db, sql: """
+                SELECT COALESCE(SUM(t.amount_minor), 0)
+                FROM "transaction" t
+                JOIN account a ON a.id = t.account_id
+                WHERE a.workspace_id = ?
+                  AND t.type = 'income'
+                  AND t.date >= ?
+                  AND t.date < date(?, '+1 month')
+            """, arguments: [workspaceId, start, start])
+            return sum ?? 0
+        }
+    }
+
+    /// Computes the income variance = actual - planned for the given month.
+    static func computeIncomeVariance(forMonth month: String) throws -> (planned: Int64, actual: Int64, variance: Int64) {
+        let plan = try fetchOrCreateIncomePlan(forMonth: month)
+        let actual = try computeActualIncome(forMonth: month)
+        let variance = actual - plan.plannedAmountMinor
+        return (plan.plannedAmountMinor, actual, variance)
+    }
 }
 
 private extension Decimal {

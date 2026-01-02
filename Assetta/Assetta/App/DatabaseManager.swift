@@ -222,6 +222,29 @@ final class DatabaseManager {
             // Recreate index to speed up account/date queries
             try db.create(index: "transaction_account_date_idx", on: "transaction", columns: ["account_id", "date"])
         }
+        migrator.registerMigration("v6_income_plan") { db in
+            try db.create(table: "income_plan") { t in
+                // Primary key: UUID stored as TEXT
+                t.column("id", .text).notNull()
+                t.primaryKey(["id"]) // TEXT PK (UUID)
+
+                // Foreign key to workspace(id)
+                t.column("workspace_id", .integer).notNull()
+                t.foreignKey(["workspace_id"], references: "workspace", columns: ["id"], onDelete: .cascade)
+
+                // Month in format YYYY-MM
+                t.column("month", .text).notNull()
+                // Planned amount in minor units (Int64)
+                t.column("planned_amount_minor", .integer).notNull()
+
+                // Creation timestamp (ISO-8601 string)
+                t.column("created_at", .text).notNull()
+
+                // Unique per workspace and month
+                t.uniqueKey(["workspace_id", "month"])
+            }
+            try db.create(index: "idx_income_plan_workspace_month", on: "income_plan", columns: ["workspace_id", "month"]) // accelerator for lookups
+        }
         try migrator.migrate(queue)
 
         dbQueue = queue
