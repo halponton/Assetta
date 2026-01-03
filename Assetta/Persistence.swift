@@ -558,6 +558,15 @@ struct Persistence {
     static func computeRecoveryAdjustments(forMonth month: String) throws -> Int64 {
         guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
         let workspaceId = try currentWorkspaceId()
+
+        // Recovery is never retroactive: only apply to current and future months.
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .iso8601)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM"
+        let currentMonth = formatter.string(from: Date())
+        if month < currentMonth { return 0 }
+
         return try dbQueue.read { db in
             // Fetch schedules that start on or before the target month for this workspace
             let schedules: [RecoverySchedule] = try RecoverySchedule.fetchAll(
@@ -593,6 +602,13 @@ struct Persistence {
         let discretionaryCapacity = plan.plannedAmountMinor - plannedObligations - recoveryAdjustments
         let unallocatedDiscretionary = discretionaryCapacity - discretionaryBudgeted
         return (plan.plannedAmountMinor, plannedObligations, discretionaryBudgeted, discretionaryCapacity, unallocatedDiscretionary)
+    }
+
+    /// Convenience helper that returns the discretionary capacity after applying recovery adjustments for the given month (YYYY-MM).
+    /// This does not persist anything; it derives values dynamically.
+    static func computeRecoveryAdjustedDiscretionaryCapacity(forMonth month: String) throws -> Int64 {
+        let summary = try computeBudgetAndObligationSummary(forMonth: month)
+        return summary.discretionaryCapacity
     }
 
     /// Computes monthly overspend where overspend = total_actual_spend - total_budgeted.

@@ -41,6 +41,9 @@ struct RecoverySchedulesView: View {
                     }
                     showingAdd = false
                 }
+                #if os(macOS)
+                .frame(minWidth: 600, minHeight: 420)
+                #endif
             }
             .alert("Error", isPresented: Binding(get: { errorMessage != nil }, set: { _ in errorMessage = nil })) {
                 Button("OK", role: .cancel) { }

@@ -33,6 +33,9 @@ struct BudgetPlannerView: View {
 
     @State private var showingRecoverySchedules = false
 
+    @State private var recoveryApplied: Int64 = 0
+    @State private var recoveryInProgress: Bool = false
+
     var body: some View {
         NavigationStack {
             plannerContent
@@ -44,7 +47,14 @@ struct BudgetPlannerView: View {
                 }
                 .onAppear { initSelection(); load() }
         }
-        .sheet(isPresented: $showingRecoverySchedules) { RecoverySchedulesView() }
+        .sheet(isPresented: $showingRecoverySchedules) {
+            RecoverySchedulesView()
+            #if os(macOS)
+                .frame(minWidth: 720, minHeight: 520)
+            #else
+                .frame(minWidth: 420)
+            #endif
+        }
     }
 
     @ViewBuilder
@@ -131,7 +141,13 @@ struct BudgetPlannerView: View {
                 VStack(spacing: 6) {
                     HStack { Text("Planned income"); Spacer(); Text(formatMinorToCurrency(plannedIncome)).monospacedDigit() }
                     HStack { Text("Planned obligations"); Spacer(); Text(formatMinorToCurrency(plannedObligations)).monospacedDigit() }
-                    HStack { Text("Discretionary capacity"); Spacer(); Text(formatMinorToCurrency(discretionaryCapacity)).monospacedDigit() }
+                    if recoveryApplied > 0 {
+                        HStack { Text("Recovery applied this month"); Spacer(); Text(formatMinorToCurrency(recoveryApplied)).monospacedDigit() }
+                    }
+                    HStack { Text("Discretionary capacity (after recovery)"); Spacer(); Text(formatMinorToCurrency(discretionaryCapacity)).monospacedDigit() }
+                    if recoveryInProgress {
+                        HStack { Text("Recovery in progress"); Spacer(); Text("") }
+                    }
                     HStack { Text("Discretionary budgeted"); Spacer(); Text(formatMinorToCurrency(totalBudgeted)).monospacedDigit() }
                     HStack { Text("Unallocated discretionary"); Spacer(); Text(formatMinorToCurrency(unallocated)).monospacedDigit() }
                     HStack { Text("Total budgeted (all categories)"); Spacer(); Text(formatMinorToCurrency(monthlyTotalBudgetedAll)).monospacedDigit() }
@@ -234,7 +250,13 @@ struct BudgetPlannerView: View {
             Section("Summary") {
                 HStack { Text("Planned income"); Spacer(); Text(formatMinorToCurrency(plannedIncome)).monospacedDigit() }
                 HStack { Text("Planned obligations"); Spacer(); Text(formatMinorToCurrency(plannedObligations)).monospacedDigit() }
-                HStack { Text("Discretionary capacity"); Spacer(); Text(formatMinorToCurrency(discretionaryCapacity)).monospacedDigit() }
+                if recoveryApplied > 0 {
+                    HStack { Text("Recovery applied this month"); Spacer(); Text(formatMinorToCurrency(recoveryApplied)).monospacedDigit() }
+                }
+                HStack { Text("Discretionary capacity (after recovery)"); Spacer(); Text(formatMinorToCurrency(discretionaryCapacity)).monospacedDigit() }
+                if recoveryInProgress {
+                    HStack { Text("Recovery in progress"); Spacer(); Text("") }
+                }
                 HStack { Text("Discretionary budgeted"); Spacer(); Text(formatMinorToCurrency(totalBudgeted)).monospacedDigit() }
                 HStack { Text("Unallocated discretionary"); Spacer(); Text(formatMinorToCurrency(unallocated)).monospacedDigit() }
                 HStack { Text("Total budgeted (all categories)"); Spacer(); Text(formatMinorToCurrency(monthlyTotalBudgetedAll)).monospacedDigit() }
@@ -318,6 +340,11 @@ struct BudgetPlannerView: View {
             monthlyTotalActualSpend = monthly.totalActual
             monthlyOverspend = monthly.overspend
 
+            // Recovery for this month
+            let recovery = try Persistence.computeRecoveryAdjustments(forMonth: month)
+            recoveryApplied = recovery
+            recoveryInProgress = recovery > 0
+
             let summary = try Persistence.computeBudgetAndObligationSummary(forMonth: month)
             plannedIncome = summary.plannedIncome
             plannedObligations = summary.plannedObligations
@@ -388,6 +415,11 @@ struct BudgetPlannerView: View {
             discretionaryCapacity = summary.discretionaryCapacity
             totalBudgeted = summary.discretionaryBudgeted
             unallocated = summary.unallocatedDiscretionary
+
+            let month = monthString()
+            let recovery = try Persistence.computeRecoveryAdjustments(forMonth: month)
+            recoveryApplied = recovery
+            recoveryInProgress = recovery > 0
         } catch {
             errorMessage = String(describing: error)
         }
