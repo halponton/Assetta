@@ -298,6 +298,44 @@ struct Persistence {
         }
     }
 
+    /// Computes balances for all accounts by summing their transaction amounts.
+    /// Accounts without transactions default to a zero balance.
+    static func computeAccountBalancesById() throws -> [String: Int64] {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        return try dbQueue.read { db in
+            var balances: [String: Int64] = [:]
+            let rows = try Row.fetchAll(db, sql: "SELECT account_id, COALESCE(SUM(amount_minor), 0) AS balance FROM \"transaction\" GROUP BY account_id")
+            for row in rows {
+                if let accountId: String = row["account_id"], let balance: Int64 = row["balance"] {
+                    balances[accountId] = balance
+                }
+            }
+            return balances
+        }
+    }
+
+    /// Lists recent savings contributions and withdrawals across all savings accounts.
+    static func listRecentSavingsMovements(limit: Int = 10) throws -> [Transaction] {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        let workspaceId = try currentWorkspaceId()
+        return try dbQueue.read { db in
+            try Transaction.fetchAll(
+                db,
+                sql: """
+                    SELECT t.*
+                    FROM "transaction" t
+                    JOIN account a ON a.id = t.account_id
+                    WHERE a.workspace_id = ?
+                      AND a.type = 'savings'
+                      AND t.type IN ('savings_contribution', 'savings_withdrawal')
+                    ORDER BY t.date DESC, t.created_at DESC
+                    LIMIT ?
+                """,
+                arguments: [workspaceId, limit]
+            )
+        }
+    }
+
     static func createTransaction(accountId: String, date: Date, amountMajor: Decimal, type: Transaction.TransactionType, notes: String?, categoryId: String?) throws {
         guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
         let formatter = DateFormatter()
