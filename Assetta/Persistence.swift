@@ -84,6 +84,51 @@ struct Persistence {
         }
     }
 
+    /// Lists recent savings movements (contributions and withdrawals) across all savings accounts.
+    static func listRecentSavingsMovements(limit: Int = 10) throws -> [Transaction] {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        let workspaceId = try currentWorkspaceId()
+        return try dbQueue.read { db in
+            try Transaction.fetchAll(db, sql: """
+                SELECT t.*
+                FROM "transaction" t
+                JOIN account a ON a.id = t.account_id
+                WHERE a.workspace_id = ?
+                  AND a.type = 'savings'
+                  AND (t.type = 'savings_contribution' OR t.type = 'savings_withdrawal')
+                ORDER BY t.date DESC
+                LIMIT ?
+            """, arguments: [workspaceId, limit])
+        }
+    }
+
+    /// Computes the running balance for a specific account by summing all transaction amounts.
+    static func computeAccountBalance(accountId: String) throws -> Int64 {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        return try dbQueue.read { db in
+            try Int64.fetchOne(db, sql: """
+                SELECT COALESCE(SUM(t.amount_minor), 0)
+                FROM "transaction" t
+                WHERE t.account_id = ?
+            """, arguments: [accountId]) ?? 0
+        }
+    }
+
+    /// Computes the total cash balance (non-savings accounts) across the workspace.
+    static func computeTotalCashBalanceForWorkspace() throws -> Int64 {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        let workspaceId = try currentWorkspaceId()
+        return try dbQueue.read { db in
+            try Int64.fetchOne(db, sql: """
+                SELECT COALESCE(SUM(t.amount_minor), 0)
+                FROM "transaction" t
+                JOIN account a ON a.id = t.account_id
+                WHERE a.workspace_id = ?
+                  AND a.type != 'savings'
+            """, arguments: [workspaceId]) ?? 0
+        }
+    }
+
     /// Creates a paired savings contribution transaction pair atomically.
     /// - fromCurrentAccountId: the source (current account) with a transfer type and negative amount
     /// - toSavingsAccountId: the destination savings account with a savings_contribution type and positive amount
