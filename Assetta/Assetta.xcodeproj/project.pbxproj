@@ -23,8 +23,13 @@
 		EF3BF3162F070D3B000C012F /* IncomePlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF3BF3152F070D3B000C012F /* IncomePlan.swift */; };
 		EF3BF3182F070D48000C012F /* IncomePlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF3BF3172F070D48000C012F /* IncomePlanView.swift */; };
 		EF3BF31A2F074B06000C012F /* BudgetModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF3BF3192F074B06000C012F /* BudgetModels.swift */; };
-		EF3BF31C2F074B22000C012F /* BudgetPlannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF3BF31B2F074B22000C012F /* BudgetPlannerView.swift */; };
-		EF3BF31E2F074E36000C012F /* ObligationModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF3BF31D2F074E36000C012F /* ObligationModels.swift */; };
+                EF3BF31C2F074B22000C012F /* BudgetPlannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF3BF31B2F074B22000C012F /* BudgetPlannerView.swift */; };
+                EF3BF31E2F074E36000C012F /* ObligationModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF3BF31D2F074E36000C012F /* ObligationModels.swift */; };
+                EF9A00112F0A000100000001 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF9A00012F0A000100000001 /* ContentView.swift */; };
+                EF9A00122F0A000100000001 /* OverviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF9A00022F0A000100000001 /* OverviewView.swift */; };
+                EF9A00132F0A000100000001 /* BudgetOverviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF9A00032F0A000100000001 /* BudgetOverviewView.swift */; };
+                EF9A00142F0A000100000001 /* SavingsHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF9A00042F0A000100000001 /* SavingsHomeView.swift */; };
+                EF9A00152F0A000100000001 /* RecoveryHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF9A00052F0A000100000001 /* RecoveryHomeView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -59,12 +64,17 @@
 		EF3BF3132F06E290000C012F /* CategoriesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoriesView.swift; sourceTree = "<group>"; };
 		EF3BF3152F070D3B000C012F /* IncomePlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IncomePlan.swift; sourceTree = "<group>"; };
 		EF3BF3172F070D48000C012F /* IncomePlanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IncomePlanView.swift; sourceTree = "<group>"; };
-		EF3BF3192F074B06000C012F /* BudgetModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BudgetModels.swift; sourceTree = "<group>"; };
-		EF3BF31B2F074B22000C012F /* BudgetPlannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BudgetPlannerView.swift; sourceTree = "<group>"; };
-		EF3BF31D2F074E36000C012F /* ObligationModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObligationModels.swift; sourceTree = "<group>"; };
-		EF5B16242F05E17E004F79B0 /* Assetta.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Assetta.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		EF5B16312F05E17F004F79B0 /* AssettaTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AssettaTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		EF5B163B2F05E17F004F79B0 /* AssettaUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AssettaUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+                EF3BF3192F074B06000C012F /* BudgetModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BudgetModels.swift; sourceTree = "<group>"; };
+                EF3BF31B2F074B22000C012F /* BudgetPlannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BudgetPlannerView.swift; sourceTree = "<group>"; };
+                EF3BF31D2F074E36000C012F /* ObligationModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObligationModels.swift; sourceTree = "<group>"; };
+                EF9A00012F0A000100000001 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UI/ContentView.swift; sourceTree = "<group>"; };
+                EF9A00022F0A000100000001 /* OverviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewView.swift; sourceTree = "<group>"; };
+                EF9A00032F0A000100000001 /* BudgetOverviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BudgetOverviewView.swift; sourceTree = "<group>"; };
+                EF9A00042F0A000100000001 /* SavingsHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavingsHomeView.swift; sourceTree = "<group>"; };
+                EF9A00052F0A000100000001 /* RecoveryHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryHomeView.swift; sourceTree = "<group>"; };
+                EF5B16242F05E17E004F79B0 /* Assetta.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Assetta.app; sourceTree = BUILT_PRODUCTS_DIR; };
+                EF5B16312F05E17F004F79B0 /* AssettaTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AssettaTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+                EF5B163B2F05E17F004F79B0 /* AssettaUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AssettaUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -297,22 +307,27 @@
 			buildActionMask = 2147483647;
 			files = (
 				EF31E5432F0876FF001B5FD2 /* RecoverySchedule.swift in Sources */,
-				EF31E5452F08772B001B5FD2 /* RecoverySchedulesView.swift in Sources */,
-				EF3BF3062F06D336000C012F /* Transaction.swift in Sources */,
-				EF3BF30A2F06D589000C012F /* Account.swift in Sources */,
-				EF3BF31C2F074B22000C012F /* BudgetPlannerView.swift in Sources */,
-				EF3BF30C2F06D590000C012F /* Persistence.swift in Sources */,
-				EF3BF31E2F074E36000C012F /* ObligationModels.swift in Sources */,
-				EF3BF3102F06D59E000C012F /* TransactionsView.swift in Sources */,
-				EF31E5472F088105001B5FD2 /* Binding+Optional.swift in Sources */,
-				EF3BF30E2F06D596000C012F /* AccountsView.swift in Sources */,
-				EF3BF3042F060111000C012F /* DatabaseDebugInspector.swift in Sources */,
-				EF3BF3122F06E27C000C012F /* Category.swift in Sources */,
-				EF3BF3182F070D48000C012F /* IncomePlanView.swift in Sources */,
-				EF3BF3162F070D3B000C012F /* IncomePlan.swift in Sources */,
-				EF3BF3142F06E290000C012F /* CategoriesView.swift in Sources */,
-				EF3BF3082F06D3EA000C012F /* TransactionTests.swift in Sources */,
-				EF3BF31A2F074B06000C012F /* BudgetModels.swift in Sources */,
+                                EF31E5452F08772B001B5FD2 /* RecoverySchedulesView.swift in Sources */,
+                                EF3BF3062F06D336000C012F /* Transaction.swift in Sources */,
+                                EF3BF30A2F06D589000C012F /* Account.swift in Sources */,
+                                EF9A00112F0A000100000001 /* ContentView.swift in Sources */,
+                                EF9A00122F0A000100000001 /* OverviewView.swift in Sources */,
+                                EF9A00132F0A000100000001 /* BudgetOverviewView.swift in Sources */,
+                                EF3BF31C2F074B22000C012F /* BudgetPlannerView.swift in Sources */,
+                                EF3BF30C2F06D590000C012F /* Persistence.swift in Sources */,
+                                EF3BF31E2F074E36000C012F /* ObligationModels.swift in Sources */,
+                                EF3BF3102F06D59E000C012F /* TransactionsView.swift in Sources */,
+                                EF31E5472F088105001B5FD2 /* Binding+Optional.swift in Sources */,
+                                EF3BF30E2F06D596000C012F /* AccountsView.swift in Sources */,
+                                EF3BF3042F060111000C012F /* DatabaseDebugInspector.swift in Sources */,
+                                EF3BF3122F06E27C000C012F /* Category.swift in Sources */,
+                                EF3BF3182F070D48000C012F /* IncomePlanView.swift in Sources */,
+                                EF3BF3162F070D3B000C012F /* IncomePlan.swift in Sources */,
+                                EF9A00142F0A000100000001 /* SavingsHomeView.swift in Sources */,
+                                EF9A00152F0A000100000001 /* RecoveryHomeView.swift in Sources */,
+                                EF3BF3142F06E290000C012F /* CategoriesView.swift in Sources */,
+                                EF3BF3082F06D3EA000C012F /* TransactionTests.swift in Sources */,
+                                EF3BF31A2F074B06000C012F /* BudgetModels.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
