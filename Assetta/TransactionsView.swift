@@ -503,7 +503,7 @@ private struct AddTransactionView: View {
     }
 }
 
-private struct SavingsMovementView: View {
+struct SavingsMovementView: View {
     @Environment(\.dismiss) private var dismiss
     let categories: [Category]
     var onComplete: (Bool) -> Void

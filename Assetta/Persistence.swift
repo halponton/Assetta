@@ -84,6 +84,33 @@ struct Persistence {
         }
     }
 
+    /// Computes the running balance for a specific account by summing all transaction amounts.
+    static func computeAccountBalance(accountId: String) throws -> Int64 {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        return try dbQueue.read { db in
+            try Int64.fetchOne(db, sql: """
+                SELECT COALESCE(SUM(amount_minor), 0)
+                FROM "transaction"
+                WHERE account_id = ?
+            """, arguments: [accountId]) ?? 0
+        }
+    }
+
+    /// Computes the total balance across all non-savings accounts in the workspace.
+    static func computeTotalCashBalanceForWorkspace() throws -> Int64 {
+        guard let dbQueue = dbQueue else { throw PersistenceError.databaseUnavailable }
+        let workspaceId = try currentWorkspaceId()
+        return try dbQueue.read { db in
+            try Int64.fetchOne(db, sql: """
+                SELECT COALESCE(SUM(t.amount_minor), 0)
+                FROM "transaction" t
+                JOIN account a ON a.id = t.account_id
+                WHERE a.workspace_id = ?
+                  AND a.type != 'savings'
+            """, arguments: [workspaceId]) ?? 0
+        }
+    }
+
     /// Creates a paired savings contribution transaction pair atomically.
     /// - fromCurrentAccountId: the source (current account) with a transfer type and negative amount
     /// - toSavingsAccountId: the destination savings account with a savings_contribution type and positive amount
